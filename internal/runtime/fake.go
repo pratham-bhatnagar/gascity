@@ -14,36 +14,42 @@ import (
 // When broken is true (via [NewFailFake]), all mutating operations return
 // an error and IsRunning always returns false. Calls are still recorded.
 type Fake struct {
-	mu         sync.Mutex
-	sessions   map[string]Config            // live sessions
-	meta       map[string]map[string]string // session → key → value
-	Calls      []Call                       // recorded calls in order
-	broken     bool                         // when true, all ops fail
-	Zombies    map[string]bool              // sessions with dead agent processes
-	Attached   map[string]bool              // sessions with attached terminals
-	PeekOutput map[string]string            // session → canned peek output
-	Activity   map[string]time.Time         // session → last activity time
+	mu                  sync.Mutex
+	sessions            map[string]Config            // live sessions
+	meta                map[string]map[string]string // session → key → value
+	Calls               []Call                       // recorded calls in order
+	broken              bool                         // when true, all ops fail
+	Zombies             map[string]bool              // sessions with dead agent processes
+	Attached            map[string]bool              // sessions with attached terminals
+	PeekOutput          map[string]string            // session → canned peek output
+	Activity            map[string]time.Time         // session → last activity time
+	PendingInteractions map[string]*PendingInteraction
+	Responses           map[string][]InteractionResponse
 }
 
 // Call records a single method invocation on [Fake].
 type Call struct {
-	Method  string // method name (e.g. "Start", "Stop", "SetMeta")
-	Name    string // session name argument
-	Config  Config // only set for Start calls
-	Message string // only set for Nudge calls
-	Key     string // only set for meta calls
-	Value   string // only set for SetMeta calls
-	Src     string // only set for CopyTo calls
-	Dst     string // only set for CopyTo calls
+	Method    string // method name (e.g. "Start", "Stop", "SetMeta")
+	Name      string // session name argument
+	Config    Config // only set for Start calls
+	Message   string // only set for Nudge/SendKeys calls
+	Key       string // only set for meta calls
+	Value     string // only set for SetMeta calls
+	Src       string // only set for CopyTo calls
+	Dst       string // only set for CopyTo calls
+	RequestID string // only set for Respond calls
+	Action    string // only set for Respond calls
 }
 
 // NewFake returns a ready-to-use [Fake].
 func NewFake() *Fake {
 	return &Fake{
-		sessions: make(map[string]Config),
-		meta:     make(map[string]map[string]string),
-		Zombies:  make(map[string]bool),
-		Attached: make(map[string]bool),
+		sessions:            make(map[string]Config),
+		meta:                make(map[string]map[string]string),
+		Zombies:             make(map[string]bool),
+		Attached:            make(map[string]bool),
+		PendingInteractions: make(map[string]*PendingInteraction),
+		Responses:           make(map[string][]InteractionResponse),
 	}
 }
 
@@ -52,11 +58,13 @@ func NewFake() *Fake {
 // session-dependent commands.
 func NewFailFake() *Fake {
 	return &Fake{
-		sessions: make(map[string]Config),
-		meta:     make(map[string]map[string]string),
-		Zombies:  make(map[string]bool),
-		Attached: make(map[string]bool),
-		broken:   true,
+		sessions:            make(map[string]Config),
+		meta:                make(map[string]map[string]string),
+		Zombies:             make(map[string]bool),
+		Attached:            make(map[string]bool),
+		PendingInteractions: make(map[string]*PendingInteraction),
+		Responses:           make(map[string][]InteractionResponse),
+		broken:              true,
 	}
 }
 
@@ -180,6 +188,70 @@ func (f *Fake) Nudge(name, message string) error {
 	if f.broken {
 		return fmt.Errorf("session unavailable")
 	}
+	return nil
+}
+
+// SetPendingInteraction configures a structured pending interaction for the
+// named session. A nil value clears any pending interaction.
+func (f *Fake) SetPendingInteraction(name string, pending *PendingInteraction) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.PendingInteractions == nil {
+		f.PendingInteractions = make(map[string]*PendingInteraction)
+	}
+	if pending == nil {
+		delete(f.PendingInteractions, name)
+		return
+	}
+	copyPending := *pending
+	f.PendingInteractions[name] = &copyPending
+}
+
+// Pending returns the configured pending interaction for the named session.
+func (f *Fake) Pending(name string) (*PendingInteraction, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Calls = append(f.Calls, Call{Method: "Pending", Name: name})
+	if f.broken {
+		return nil, fmt.Errorf("session unavailable")
+	}
+	pending := f.PendingInteractions[name]
+	if pending == nil {
+		return nil, nil
+	}
+	copyPending := *pending
+	return &copyPending, nil
+}
+
+// Respond records the response and clears the matching pending interaction.
+func (f *Fake) Respond(name string, response InteractionResponse) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.Calls = append(f.Calls, Call{
+		Method:    "Respond",
+		Name:      name,
+		RequestID: response.RequestID,
+		Action:    response.Action,
+		Message:   response.Text,
+	})
+	if f.broken {
+		return fmt.Errorf("session unavailable")
+	}
+	pending := f.PendingInteractions[name]
+	if pending == nil {
+		return fmt.Errorf("no pending interaction")
+	}
+	if pending.RequestID != "" && response.RequestID != "" && pending.RequestID != response.RequestID {
+		return fmt.Errorf("pending interaction %q does not match request %q", pending.RequestID, response.RequestID)
+	}
+	if response.RequestID == "" {
+		response.RequestID = pending.RequestID
+	}
+	if f.Responses == nil {
+		f.Responses = make(map[string][]InteractionResponse)
+	}
+	f.Responses[name] = append(f.Responses[name], response)
+	delete(f.PendingInteractions, name)
 	return nil
 }
 
