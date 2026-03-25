@@ -1,0 +1,11 @@
+# Replaces cron job: pack-updater
+#
+# Fetches latest pack versions from configured remotes and applies
+# updates. Compares local pack checksums against remote manifests
+# and pulls changed files. Does not auto-restart agents — updated
+# packs take effect on next agent session cycle.
+[order]
+description = "Fetch and apply pack updates from remote sources"
+gate = "cooldown"
+interval = "2h"
+exec = "$PACK_DIR/scripts/pack-updater.sh"

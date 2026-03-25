@@ -1,0 +1,10 @@
+# Replaces cron job: mesh-autosync
+#
+# Full mesh synchronization pass — deeper than mesh-sync. Reconciles
+# divergent forks, resolves conflicts, and ensures all databases
+# across the mesh converge to consistent state.
+[order]
+description = "Full mesh reconciliation and conflict resolution"
+gate = "cooldown"
+interval = "2h"
+exec = "$PACK_DIR/scripts/mesh-autosync.sh"

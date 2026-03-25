@@ -1,0 +1,10 @@
+# Replaces cron job: inbox-processor
+#
+# Processes queued mail across all agent inboxes. Delivers pending
+# messages, retries failed deliveries, and cleans up expired or
+# orphaned mail beads whose recipients no longer exist.
+[order]
+description = "Process queued mail and retry failed deliveries"
+gate = "cooldown"
+interval = "5m"
+exec = "$PACK_DIR/scripts/inbox-processor.sh"

@@ -1,0 +1,10 @@
+# Replaces cron job: mayor-daemon
+#
+# Ensures the mayor session is alive and responsive. Checks tmux
+# session existence, verifies the agent is not idle past threshold,
+# and restarts the session if it has crashed or become unresponsive.
+[order]
+description = "Monitor mayor session health and restart on failure"
+gate = "cooldown"
+interval = "10m"
+exec = "$PACK_DIR/scripts/mayor-daemon.sh"

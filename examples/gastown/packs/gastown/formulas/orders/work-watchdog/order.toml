@@ -1,0 +1,10 @@
+# Replaces cron job: work-watchdog
+#
+# Scans for stuck work across all rigs. Detects beads in_progress
+# with no recent activity, stalled molecules, and agents that have
+# gone silent. Escalates to the witness for intervention.
+[order]
+description = "Detect stuck work and stalled agents across rigs"
+gate = "cooldown"
+interval = "5m"
+exec = "$PACK_DIR/scripts/work-watchdog.sh"

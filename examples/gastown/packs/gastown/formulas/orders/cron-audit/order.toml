@@ -1,0 +1,11 @@
+# Replaces cron job: cron-audit
+#
+# Daily audit of all order definitions and execution history.
+# Detects orders that haven't fired within their expected window,
+# orders with persistent failures, and configuration drift between
+# pack definitions and runtime state.
+[order]
+description = "Audit order health and detect missed or failing orders"
+gate = "cron"
+schedule = "0 6 * * *"
+exec = "$PACK_DIR/scripts/cron-audit.sh"

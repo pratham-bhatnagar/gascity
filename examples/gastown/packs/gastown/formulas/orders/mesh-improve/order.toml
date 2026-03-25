@@ -1,0 +1,10 @@
+# Replaces cron job: mesh-improve
+#
+# Evaluates mesh peer connectivity and quality. Prunes stale peers,
+# promotes reliable connections, and optimizes routing tables for
+# better federation throughput.
+[order]
+description = "Evaluate and improve mesh peer connections"
+gate = "cooldown"
+interval = "10m"
+exec = "$PACK_DIR/scripts/mesh-improve.sh"

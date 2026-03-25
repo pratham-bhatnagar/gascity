@@ -1,0 +1,10 @@
+# Replaces cron job: mesh-sync
+#
+# Pulls latest state from connected mesh peers and pushes local
+# changes. Keeps the local wasteland fork in sync with the shared
+# commons database so wanted-board items and completions propagate.
+[order]
+description = "Sync mesh state with connected peers"
+gate = "cooldown"
+interval = "2m"
+exec = "$PACK_DIR/scripts/mesh-sync.sh"

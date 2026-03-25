@@ -1,0 +1,11 @@
+# Replaces cron job: dolthub-sync
+#
+# Pushes all local Dolt databases to their configured DoltHub remotes.
+# Uses SQL-based push when the server is running (non-disruptive),
+# falls back to CLI push otherwise. Includes --gc to purge closed
+# ephemeral beads before pushing.
+[order]
+description = "Sync local Dolt databases to DoltHub remotes"
+gate = "cooldown"
+interval = "2m"
+exec = "gt dolt sync --gc"
