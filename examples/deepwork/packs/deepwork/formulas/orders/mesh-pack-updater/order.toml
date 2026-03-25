@@ -1,0 +1,5 @@
+[order]
+description = "Update blueprint packs from DoltHub"
+exec = "mesh-pack-updater.sh"
+gate = "cron"
+schedule = "0 */2 * * *"

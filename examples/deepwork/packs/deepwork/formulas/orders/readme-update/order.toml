@@ -1,0 +1,5 @@
+[order]
+description = "Check for code changes and update README if needed"
+exec = "mesh-readme-update.sh"
+gate = "cron"
+schedule = "0 6 * * *"

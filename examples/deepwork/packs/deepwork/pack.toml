@@ -1,0 +1,51 @@
+# Deepwork — mesh-based distributed coding workflow pack.
+#
+# Converted from the deepwork-base gt-mesh pack to Gas City pack format.
+# Defines coordinator, worker, and reviewer roles for distributed
+# multi-GT coding workflows with mesh communication, governance rules,
+# and automated cron-driven operations.
+#
+# This pack provides shared knowledge (as prompt templates), governance
+# rules, and order-based scheduling for mesh coordination patterns.
+
+[pack]
+name = "deepwork"
+schema = 1
+
+[formulas]
+dir = "formulas"
+
+# ── COORDINATOR — Plans, routes tasks, manages mesh. One per city. ────
+[[agent]]
+name = "coordinator"
+scope = "city"
+work_dir = ".gc/agents/coordinator"
+prompt_template = "prompts/coordinator.md.tmpl"
+nudge = "Check mesh inbox and hook status, then act accordingly."
+idle_timeout = "1h"
+
+[[named_session]]
+template = "coordinator"
+scope = "city"
+mode = "on_demand"
+
+# ── REVIEWER — Code review, QA, merge gating. One per rig. ───────────
+[[agent]]
+name = "reviewer"
+scope = "rig"
+work_dir = ".gc/agents/{{.Rig}}/reviewer"
+prompt_template = "prompts/reviewer.md.tmpl"
+nudge = "Check for PRs requiring review."
+idle_timeout = "1h"
+
+# ── WORKER — Transient coding agents. Pool. Worktree. ────────────────
+[[agent]]
+name = "worker"
+scope = "rig"
+work_dir = ".gc/worktrees/{{.Rig}}/workers/{{.AgentBase}}"
+prompt_template = "prompts/worker.md.tmpl"
+nudge = "Check your hook for work assignments."
+idle_timeout = "2h"
+[agent.pool]
+min = 0
+max = 5

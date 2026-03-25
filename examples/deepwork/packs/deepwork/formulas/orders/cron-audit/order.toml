@@ -1,0 +1,5 @@
+[order]
+description = "Daily audit: verify crontab matches order definitions"
+exec = "cron-audit.sh --enforce"
+gate = "cron"
+schedule = "0 6 * * *"

@@ -1,0 +1,5 @@
+[order]
+description = "Check worker sessions alive, restart if dead"
+exec = "mesh-work-watchdog.sh"
+gate = "cron"
+schedule = "*/5 * * * *"

@@ -1,0 +1,5 @@
+[order]
+description = "Broadcast work digest to mesh peers every 2 hours"
+exec = "mesh-auto-sync.sh digest"
+gate = "cron"
+schedule = "0 */2 * * *"

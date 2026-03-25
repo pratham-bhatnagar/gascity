@@ -1,0 +1,5 @@
+[order]
+description = "Coordinator daemon health check"
+exec = "mesh-mayor-daemon.sh"
+gate = "cron"
+schedule = "*/10 * * * *"

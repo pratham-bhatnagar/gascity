@@ -1,0 +1,5 @@
+[order]
+description = "Mesh heartbeat, knowledge sync, mail handler trigger"
+exec = "mesh-sync.sh"
+gate = "cron"
+schedule = "*/2 * * * *"

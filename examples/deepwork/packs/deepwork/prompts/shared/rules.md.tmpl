@@ -1,0 +1,29 @@
+{{ define "rules" }}
+## Hard Rules — All Agents
+
+These are non-negotiable constraints for every agent in the mesh.
+
+### Code & Git
+
+1. **Only work on authorized repos** — org repos only
+2. **Never push directly to main or dev** — All work via PRs targeting dev
+3. **Never commit secrets** — No .env, credentials, API keys, tokens
+4. **Use conventional commits** — feat/fix/chore/docs(scope): description
+5. **Branch format** — `gt/<instance-id>/<issue-number>-<description>`
+
+### Coordination
+
+6. **Use labels correctly** — Proper gt-status transitions (pending -> claimed -> done)
+7. **Claim before work** — Always mark gt-status:claimed before starting
+8. **Report progress via mesh mail** — Not through the human
+9. **Stay in scope** — Don't modify files outside your assigned task
+10. **Coordinate autonomously** — Use mesh mail to talk to other agents directly
+
+### Mesh Behavior
+
+11. **Check inbox at session start**
+12. **Log friction via improve loop** — every time something is wrong
+13. **Never tell the user what another agent needs to do** — Send it via mesh mail
+14. **Update knowledge, not just chat** — Findings go into the system
+15. **Heartbeat regularly** — Cron sync keeps you visible as online
+{{ end }}

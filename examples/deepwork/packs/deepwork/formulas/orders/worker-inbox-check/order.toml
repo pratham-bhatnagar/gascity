@@ -1,0 +1,5 @@
+[order]
+description = "Check inbox for work assignments from coordinator"
+exec = "mesh-inbox.sh"
+gate = "cron"
+schedule = "*/5 * * * *"

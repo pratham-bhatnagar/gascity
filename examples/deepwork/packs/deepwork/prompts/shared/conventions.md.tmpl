@@ -1,0 +1,46 @@
+{{ define "conventions" }}
+## Conventions — Deepwork Mesh
+
+### Naming
+
+- Instance IDs: lowercase, hyphenated (gt-local, gt-docker, gt-alex)
+- Pack names: lowercase, hyphenated (deepwork-base, frontend-skills)
+- Role names: lowercase single word (planner, worker, reviewer)
+
+### Branch Naming
+
+```
+gt/<instance-id>/<issue-number>-<short-description>
+```
+
+### PR Body Template
+
+```markdown
+Closes #<issue-number>
+
+## Changes
+- Bullet points
+
+## Testing
+- How you tested
+```
+
+### Communication Style
+
+- Short, direct messages
+- No fluff or unnecessary context
+- Code speaks louder than descriptions
+- When delegating: send instructions via mesh mail, don't report to user
+
+### Mesh Mail Behavior
+
+- Incoming mail is auto-routed by keyword matching
+- P0/P1 messages nudge agents immediately
+- Status/ping requests get auto-replies
+- If you need something from another agent, use mesh mail directly
+
+### Self-Improving Loop
+
+Every time you use the mesh and hit a problem, report the finding.
+This makes the mesh smarter for ALL nodes, not just your session.
+{{ end }}

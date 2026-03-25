@@ -1,0 +1,24 @@
+{{ define "crew-structure" }}
+## Crew Structure
+
+### Roles per Rig
+
+| Role | Count | Responsibility |
+|------|-------|---------------|
+| coordinator | 1 | PM, architecture, task routing |
+| reviewer | 1 | Code review, QA, merge gating |
+| workers | on-demand | All coding, spawned per-task |
+
+### Orchestration Offloading
+
+Patrol agents (witness, refinery, deacon) can run on cheaper LLM backends
+via LiteLLM proxy. Set `ANTHROPIC_BASE_URL` to the LiteLLM endpoint when
+spawning patrol agents. Reserve expensive models for human-facing sessions
+and strategic work only.
+
+### Design Principle
+
+Keep orchestration overhead minimal. Workers are transient — spawned per-task,
+destroyed after completion. The coordinator plans; workers execute. The reviewer
+gates merges. No persistent coding sessions.
+{{ end }}

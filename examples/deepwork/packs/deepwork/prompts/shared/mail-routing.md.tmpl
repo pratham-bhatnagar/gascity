@@ -1,0 +1,25 @@
+{{ define "mail-routing" }}
+## Mail Routing Configuration
+
+The mesh mail handler dynamically routes incoming messages to the right local
+agent based on keyword matching against the message subject and body.
+
+### How It Works
+
+1. Every 2-minute sync checks for unread mail
+2. For each message, subject + body are scanned for keywords
+3. First matching route wins — message is nudged to that agent's session
+4. If the target agent is dead, falls back to the next alive agent
+5. P0/P1 messages always trigger a nudge; P2+ are logged for session pickup
+
+### Extending the Routing Table
+
+Add entries to the route table in the mail handler script. More specific
+patterns should come first (first match wins).
+
+### Auto-Replies
+
+Messages with subjects matching `status`, `ping`, `alive`, or `heartbeat`
+get an automatic reply with: online status, peer count, active agent count,
+last sync time.
+{{ end }}

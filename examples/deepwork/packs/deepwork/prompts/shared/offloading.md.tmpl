@@ -1,0 +1,28 @@
+{{ define "offloading" }}
+## Orchestration Offloading
+
+### Problem
+Most agent sessions are automated overhead (witness, refinery, patrol).
+These are mechanical tasks that don't need top-tier reasoning.
+
+### Solution
+Route patrol agents through LiteLLM proxy to cheaper backends.
+
+### Environment Variables
+```bash
+ANTHROPIC_BASE_URL=${LITELLM_URL}  # LiteLLM proxy
+ANTHROPIC_API_KEY=<litellm-key>    # Key with model aliases
+```
+
+### Configure Per-Role
+In `city.toml`:
+```toml
+[role_env.witness]
+ANTHROPIC_BASE_URL = "${LITELLM_URL}"
+ANTHROPIC_API_KEY = "<litellm-patrol-key>"
+
+[role_env.refinery]
+ANTHROPIC_BASE_URL = "${LITELLM_URL}"
+ANTHROPIC_API_KEY = "<litellm-patrol-key>"
+```
+{{ end }}

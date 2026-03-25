@@ -1,0 +1,60 @@
+{{ define "troubleshooting" }}
+## Troubleshooting — Common Issues and Fixes
+
+### Dolt Issues
+
+**"database is read only"**
+The dolt clone was created without write permissions. Re-clone:
+```bash
+rm -rf /tmp/mesh-sync-clone
+GT_ROOT=$GT_ROOT bash .gt-mesh/scripts/mesh-sync.sh
+```
+
+**"permission denied" on dolt clone**
+Dolt credentials not configured or expired:
+```bash
+dolt creds ls          # Check active credential
+dolt creds use <id>    # Switch to valid credential
+```
+
+**"merge conflict" on dolt pull**
+Multiple agents wrote to the same table simultaneously:
+```bash
+cd /tmp/mesh-sync-clone
+dolt conflicts resolve --ours .
+dolt add . && dolt commit -m "resolve merge conflict"
+dolt push
+```
+
+### Git Issues
+
+**"push rejected" (non-fast-forward)**
+Someone else pushed while you were working:
+```bash
+git pull --rebase && git push
+```
+
+**Worker branch has no commits**
+Worker died before committing. Check for uncommitted files:
+```bash
+git status --short
+git ls-files --others --exclude-standard
+```
+Rescue files manually, commit from coordinator workspace.
+
+### Mesh Issues
+
+**Messages not delivering**
+Check sync is running:
+```bash
+GT_ROOT=$GT_ROOT bash .gt-mesh/scripts/mesh-sync.sh
+```
+
+**Peer shows stale last_seen**
+The peer's sync daemon may have stopped. Nudge them or check their session.
+
+### Bead Issues
+
+**"unknown flag" errors with bd/gt commands**
+Check the command syntax — flags may have changed between versions.
+{{ end }}

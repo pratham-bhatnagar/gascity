@@ -1,0 +1,5 @@
+[order]
+description = "Daily sync to GitHub public repos"
+exec = "mesh-github-sync.sh"
+gate = "cron"
+schedule = "0 6 * * *"

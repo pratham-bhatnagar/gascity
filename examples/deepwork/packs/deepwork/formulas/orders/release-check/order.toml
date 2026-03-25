@@ -1,0 +1,5 @@
+[order]
+description = "Check if dev has enough changes for a release PR"
+exec = "mesh-release-check.sh"
+gate = "cron"
+schedule = "0 8 * * 1"

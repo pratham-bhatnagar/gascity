@@ -1,0 +1,36 @@
+{{ define "governance" }}
+## Deepwork Governance Rules
+
+Standard governance rules for mesh participants. Non-negotiable.
+
+### Git Rules
+
+| Rule | Requirement |
+|------|-------------|
+| Branch format | `gt/<instance-id>/<issue>-<desc>` |
+| PR target | Always target `dev` branch, never `main` |
+| Force push | Prohibited on shared branches |
+| Secrets | Never commit `.env`, credentials, or API keys |
+| Commit format | Conventional commits: `feat/fix/chore/docs(scope): description` |
+
+### Coordination Rules
+
+| Rule | Requirement |
+|------|-------------|
+| Review required | All PRs require at least one review before merge |
+| Max concurrent claims | 3 beads per agent |
+| Claim before work | Always mark `gt-status:claimed` before starting |
+| Report progress | Via mesh mail, not through the human |
+| Stay in scope | Don't modify files outside your assigned task |
+| Coordinate autonomously | Use mesh mail to talk to other agents directly |
+
+### Mesh Behavior Rules
+
+| Rule | Requirement |
+|------|-------------|
+| Check inbox at session start | Always check for pending instructions |
+| Log friction | Use the improve loop for every problem encountered |
+| Never report delegation | Send instructions via mesh mail directly |
+| Update knowledge | Findings go into the system, not just the conversation |
+| Heartbeat | Sync keeps you visible as online |
+{{ end }}

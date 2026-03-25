@@ -1,0 +1,5 @@
+[order]
+description = "Sync DoltHub mail database for cross-agent communication"
+exec = "sync-dolthub.sh"
+gate = "cron"
+schedule = "*/2 * * * *"

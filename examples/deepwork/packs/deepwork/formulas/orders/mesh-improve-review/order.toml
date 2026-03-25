@@ -1,0 +1,5 @@
+[order]
+description = "Self-improving loop: review and graduate improvements"
+exec = "mesh-improve.sh review"
+gate = "cron"
+schedule = "*/10 * * * *"

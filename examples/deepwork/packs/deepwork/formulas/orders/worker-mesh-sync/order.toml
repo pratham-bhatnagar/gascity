@@ -1,0 +1,5 @@
+[order]
+description = "Worker mesh heartbeat and DoltHub sync"
+exec = "mesh-sync.sh"
+gate = "cron"
+schedule = "*/2 * * * *"

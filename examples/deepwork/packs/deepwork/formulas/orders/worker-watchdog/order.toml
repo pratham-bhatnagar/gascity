@@ -1,0 +1,5 @@
+[order]
+description = "Check for stale claims, idle sessions, restart if needed"
+exec = "mesh-work-watchdog.sh"
+gate = "cron"
+schedule = "*/5 * * * *"

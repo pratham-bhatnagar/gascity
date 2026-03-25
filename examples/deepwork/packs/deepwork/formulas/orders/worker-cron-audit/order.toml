@@ -1,0 +1,5 @@
+[order]
+description = "Daily audit: ensure crontab matches registry"
+exec = "cron-audit.sh --enforce"
+gate = "cron"
+schedule = "0 6 * * *"
