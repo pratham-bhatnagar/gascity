@@ -28,15 +28,30 @@ from mcp.server.fastmcp import FastMCP
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "agents"))
 
 from shared.dolt import DoltClient
-from shared.llm import generate_structured, generate_text
+from shared.llm import generate_structured, generate_text, configure as configure_llm
 from shared.schemas import StampResult, MapResult, OverseerReport, BoardReport
+
+# Add parent for config import
+sys.path.insert(0, os.path.dirname(__file__))
+from config import Config
 
 logging.basicConfig(level=logging.INFO, stream=sys.stderr,
                     format="%(asctime)s [DI] %(message)s")
 logger = logging.getLogger(__name__)
 
-GT_ROOT = os.environ.get("GT_ROOT", os.path.expanduser("~/gt"))
-WASTELAND_DB = os.environ.get("WASTELAND_DB", "wl_commons")
+# Load configuration (env vars > config.yaml > defaults)
+cfg = Config.load()
+
+# Configure subsystems from config
+configure_llm(
+    base_url=cfg.llm.base_url,
+    model=cfg.llm.model,
+    api_key=cfg.llm.api_key,
+    temperature=cfg.llm.temperature,
+)
+
+GT_ROOT = cfg.gt_root
+WASTELAND_DB = cfg.wasteland.database
 
 # ─── Usage Logging ────────────────────────────────────────
 # Logs every tool call: who called, what tool, input/output, latency, tokens
@@ -71,8 +86,9 @@ def _get_caller() -> str:
     """Detect who's calling — from env vars set by Gas Town."""
     return os.environ.get("GT_ROLE", os.environ.get("GT_AGENT", "unknown"))
 
-# Project → rig DB mapping
-PROJECT_TO_DB = {
+# Project → rig DB mapping (from config.yaml)
+PROJECT_TO_DB = cfg.wasteland.project_to_db or {
+    # Fallback defaults if config is empty
     "ai-planogram": "villa_ai_planogram",
     "alc-ai-villa": "villa_alc_ai",
     "officeworld": "officeworld",
@@ -84,7 +100,8 @@ PROJECT_TO_DB = {
     "deepwork-intelligence": "di",
 }
 
-dolt = DoltClient()
+dolt = DoltClient(host=cfg.dolt.host, port=cfg.dolt.port,
+                  user=cfg.dolt.user, password=cfg.dolt.password)
 
 # ─── MCP Server ────────────────────────────────────────────
 

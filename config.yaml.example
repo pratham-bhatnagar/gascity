@@ -1,0 +1,32 @@
+# Deepwork Intelligence — Example Configuration
+#
+# Copy to config.yaml and customize for your deployment.
+# All values can be overridden by DI_* environment variables.
+#
+# cp config.yaml.example config.yaml
+
+llm:
+  # Any OpenAI-compatible endpoint:
+  #   vLLM local:      http://localhost:8080/v1
+  #   OpenRouter:       https://openrouter.ai/api/v1
+  #   Together AI:      https://api.together.xyz/v1
+  #   LiteLLM proxy:    http://localhost:4000/v1
+  #   Ollama:           http://localhost:11434/v1
+  base_url: "http://localhost:8080/v1"
+  model: "your-model-name"
+  api_key: "your-api-key"  # Or set DI_LLM_API_KEY env var
+  temperature: 0.1
+  provider: "vllm-local"  # For analytics tracking
+
+dolt:
+  host: "127.0.0.1"
+  port: 3307
+  user: "root"
+  password: ""
+
+wasteland:
+  database: "wl_commons"  # Your wasteland DB name in Dolt
+  handle: "your-handle"   # Your rig handle for wasteland
+  project_to_db:
+    # Map wasteland project names → your rig database names
+    # my-project: my_rig_database

@@ -1,5 +1,17 @@
+# Secrets — never commit your actual config
+config.yaml
+*.env
 
-# Beads / Dolt files (added by bd init)
-.dolt/
-*.db
-.beads-credential-key
+# Runtime logs and feedback data
+logs/
+feedback/stamp_feedback.jsonl
+
+# Python
+__pycache__/
+*.pyc
+
+# Gas Town polecats
+polecats/
+.repo.git/
+.runtime/
+.beads/
