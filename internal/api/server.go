@@ -315,6 +315,11 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /v0/service/{name}/restart", s.handleServiceRestart)
 	s.mux.HandleFunc("/svc/", s.handleServiceProxy)
 
+	// Memories
+	s.mux.HandleFunc("GET /v0/memories", s.handleMemoryList)
+	s.mux.HandleFunc("POST /v0/memories", s.handleMemoryCreate)
+	s.mux.HandleFunc("GET /v0/memory/{id}", s.handleMemoryGet)
+
 	// External messaging (extmsg)
 	s.mux.HandleFunc("POST /v0/extmsg/inbound", s.handleExtMsgInbound)
 	s.mux.HandleFunc("POST /v0/extmsg/outbound", s.handleExtMsgOutbound)

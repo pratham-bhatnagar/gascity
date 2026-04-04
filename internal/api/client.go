@@ -269,6 +269,116 @@ func (c *Client) doGet(path string, out any) error {
 	return fmt.Errorf("API returned %d", resp.StatusCode)
 }
 
+// MemoryListParams controls filtering for ListMemories.
+type MemoryListParams struct {
+	Query         string // keyword search (q)
+	Scope         string // agent, rig, town, global
+	Kind          string // pattern, decision, incident, skill, context, anti-pattern
+	MinConfidence string // minimum confidence threshold
+	Rig           string // target rig
+	Limit         int    // max results (0 = server default)
+}
+
+// MemoryCreateParams holds fields for creating a memory bead.
+type MemoryCreateParams struct {
+	Rig         string   `json:"rig,omitempty"`
+	Title       string   `json:"title"`
+	Description string   `json:"description,omitempty"`
+	Kind        string   `json:"kind,omitempty"`
+	Confidence  string   `json:"confidence,omitempty"`
+	Scope       string   `json:"scope,omitempty"`
+	DecayAt     string   `json:"decay_at,omitempty"`
+	SourceBead  string   `json:"source_bead,omitempty"`
+	SourceEvent string   `json:"source_event,omitempty"`
+	Labels      []string `json:"labels,omitempty"`
+}
+
+// ListMemories fetches memories with optional filtering.
+func (c *Client) ListMemories(params MemoryListParams) ([]MemoryResponse, error) {
+	qv := url.Values{}
+	if params.Query != "" {
+		qv.Set("q", params.Query)
+	}
+	if params.Scope != "" {
+		qv.Set("scope", params.Scope)
+	}
+	if params.Kind != "" {
+		qv.Set("kind", params.Kind)
+	}
+	if params.MinConfidence != "" {
+		qv.Set("min_confidence", params.MinConfidence)
+	}
+	if params.Rig != "" {
+		qv.Set("rig", params.Rig)
+	}
+	if params.Limit > 0 {
+		qv.Set("limit", fmt.Sprintf("%d", params.Limit))
+	}
+
+	path := "/v0/memories"
+	if len(qv) > 0 {
+		path += "?" + qv.Encode()
+	}
+
+	var resp struct {
+		Items []MemoryResponse `json:"items"`
+	}
+	if err := c.doGet(path, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
+}
+
+// CreateMemory creates a new memory bead.
+func (c *Client) CreateMemory(params MemoryCreateParams) (MemoryResponse, error) {
+	data, err := json.Marshal(params)
+	if err != nil {
+		return MemoryResponse{}, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.urlForPath("/v0/memories"), bytes.NewReader(data))
+	if err != nil {
+		return MemoryResponse{}, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("X-GC-Request", "true")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return MemoryResponse{}, &connError{err: fmt.Errorf("request failed: %w", err)}
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusCreated {
+		var apiErr struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&apiErr); err != nil {
+			return MemoryResponse{}, fmt.Errorf("API returned %d", resp.StatusCode)
+		}
+		if apiErr.Message != "" {
+			return MemoryResponse{}, fmt.Errorf("API error: %s", apiErr.Message)
+		}
+		return MemoryResponse{}, fmt.Errorf("API returned %d", resp.StatusCode)
+	}
+
+	var result MemoryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return MemoryResponse{}, fmt.Errorf("decode response: %w", err)
+	}
+	return result, nil
+}
+
+// GetMemory fetches a single memory bead by ID.
+func (c *Client) GetMemory(id string) (MemoryResponse, error) {
+	var result MemoryResponse
+	if err := c.doGet("/v0/memory/"+url.PathEscape(id), &result); err != nil {
+		return MemoryResponse{}, err
+	}
+	return result, nil
+}
+
 func (c *Client) urlForPath(path string) string {
 	if c.scopePrefix != "" && strings.HasPrefix(path, "/v0/") {
 		return c.baseURL + c.scopePrefix + strings.TrimPrefix(path, "/v0")
