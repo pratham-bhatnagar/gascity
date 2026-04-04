@@ -36,7 +36,40 @@ logging.basicConfig(level=logging.INFO, stream=sys.stderr,
 logger = logging.getLogger(__name__)
 
 GT_ROOT = os.environ.get("GT_ROOT", os.path.expanduser("~/gt"))
-WASTELAND_DB = "wl_commons"
+WASTELAND_DB = os.environ.get("WASTELAND_DB", "wl_commons")
+
+# ─── Usage Logging ────────────────────────────────────────
+# Logs every tool call: who called, what tool, input/output, latency, tokens
+
+LOGS_DIR = os.path.join(os.path.dirname(__file__), "logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+_call_log_file = os.path.join(LOGS_DIR, "tool_calls.jsonl")
+
+
+def _log_tool_call(tool_name: str, caller: str, inputs: dict, output: str,
+                   latency_ms: int, error: str | None = None):
+    """Append a structured log entry for every tool invocation."""
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "tool": tool_name,
+        "caller": caller or "unknown",
+        "inputs": {k: str(v)[:500] for k, v in inputs.items()},
+        "output_size": len(output),
+        "output_preview": output[:300],
+        "latency_ms": latency_ms,
+        "error": error,
+    }
+    try:
+        with open(_call_log_file, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
+
+
+def _get_caller() -> str:
+    """Detect who's calling — from env vars set by Gas Town."""
+    return os.environ.get("GT_ROLE", os.environ.get("GT_AGENT", "unknown"))
 
 # Project → rig DB mapping
 PROJECT_TO_DB = {
@@ -76,6 +109,8 @@ async def wasteland_stamp(completion_id: str) -> str:
     Args:
         completion_id: The completion ID to score (e.g. c-abc123)
     """
+    import time as _time
+    _t0 = int(_time.time() * 1000)
     from wasteland.stamp import score_completion
 
     # Get completion details from Dolt
@@ -133,13 +168,17 @@ async def wasteland_stamp(completion_id: str) -> str:
     dolt.commit_and_push(WASTELAND_DB,
         f"DI stamp: {completion_id} Q:{result.quality} R:{result.reliability} C:{result.creativity}")
 
-    return json.dumps({
+    _output = json.dumps({
         "stamp_id": stamp_id,
         "quality": result.quality,
         "reliability": result.reliability,
         "creativity": result.creativity,
         "reasoning": result.reasoning,
     })
+    _log_tool_call("wasteland_stamp", _get_caller(),
+                   {"completion_id": completion_id}, _output,
+                   int(_time.time() * 1000) - _t0)
+    return _output
 
 
 @mcp.tool()
@@ -755,6 +794,170 @@ async def health() -> str:
 
     checks["timestamp"] = datetime.now(timezone.utc).isoformat()
     return json.dumps(checks)
+
+
+# ─── Analytics & Dashboard ────────────────────────────────
+
+@mcp.tool()
+async def analytics_usage() -> str:
+    """Get tool usage analytics — which tools are called most, by whom, latency trends.
+
+    Reads from logs/tool_calls.jsonl. Use this to understand which tools
+    agents rely on and where to improve.
+    """
+    if not os.path.exists(_call_log_file):
+        return json.dumps({"message": "No usage data yet", "total_calls": 0})
+
+    entries = []
+    with open(_call_log_file) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    pass
+
+    if not entries:
+        return json.dumps({"message": "No usage data yet", "total_calls": 0})
+
+    # Aggregate by tool
+    from collections import Counter, defaultdict
+    tool_counts = Counter(e["tool"] for e in entries)
+    caller_counts = Counter(e.get("caller", "unknown") for e in entries)
+    error_count = sum(1 for e in entries if e.get("error"))
+
+    # Latency stats per tool
+    latency_by_tool = defaultdict(list)
+    for e in entries:
+        if e.get("latency_ms"):
+            latency_by_tool[e["tool"]].append(e["latency_ms"])
+
+    latency_stats = {}
+    for tool, latencies in latency_by_tool.items():
+        latency_stats[tool] = {
+            "avg_ms": round(sum(latencies) / len(latencies)),
+            "max_ms": max(latencies),
+            "calls": len(latencies),
+        }
+
+    # Recent errors
+    recent_errors = [
+        {"tool": e["tool"], "caller": e.get("caller"), "error": e["error"],
+         "timestamp": e["timestamp"]}
+        for e in entries if e.get("error")
+    ][-5:]
+
+    return json.dumps({
+        "total_calls": len(entries),
+        "by_tool": dict(tool_counts.most_common()),
+        "by_caller": dict(caller_counts.most_common()),
+        "error_rate": f"{error_count}/{len(entries)}",
+        "latency": latency_stats,
+        "recent_errors": recent_errors,
+        "period": {
+            "first": entries[0]["timestamp"] if entries else None,
+            "last": entries[-1]["timestamp"] if entries else None,
+        },
+    })
+
+
+@mcp.tool()
+async def analytics_tool_detail(tool_name: str) -> str:
+    """Get detailed analytics for a specific tool — inputs, outputs, patterns.
+
+    Args:
+        tool_name: Tool name (e.g. wasteland_stamp, docs_create)
+    """
+    if not os.path.exists(_call_log_file):
+        return json.dumps({"message": "No usage data"})
+
+    entries = []
+    with open(_call_log_file) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    e = json.loads(line)
+                    if e["tool"] == tool_name:
+                        entries.append(e)
+                except Exception:
+                    pass
+
+    if not entries:
+        return json.dumps({"message": f"No calls for {tool_name}"})
+
+    # Analyze input patterns
+    input_keys = set()
+    for e in entries:
+        input_keys.update(e.get("inputs", {}).keys())
+
+    return json.dumps({
+        "tool": tool_name,
+        "total_calls": len(entries),
+        "callers": list(set(e.get("caller", "unknown") for e in entries)),
+        "input_fields": list(input_keys),
+        "avg_latency_ms": round(sum(e.get("latency_ms", 0) for e in entries) / len(entries)),
+        "error_count": sum(1 for e in entries if e.get("error")),
+        "last_5_calls": [
+            {
+                "timestamp": e["timestamp"],
+                "caller": e.get("caller"),
+                "inputs": e.get("inputs"),
+                "output_preview": e.get("output_preview", "")[:100],
+                "latency_ms": e.get("latency_ms"),
+                "error": e.get("error"),
+            }
+            for e in entries[-5:]
+        ],
+    })
+
+
+@mcp.tool()
+async def analytics_agent_report(caller: str) -> str:
+    """Get usage report for a specific agent/caller.
+
+    Shows which tools they call, how often, and any error patterns.
+
+    Args:
+        caller: Agent identifier (e.g. mayor, witness, polecat-name)
+    """
+    if not os.path.exists(_call_log_file):
+        return json.dumps({"message": "No usage data"})
+
+    from collections import Counter
+    entries = []
+    with open(_call_log_file) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    e = json.loads(line)
+                    if caller.lower() in (e.get("caller", "")).lower():
+                        entries.append(e)
+                except Exception:
+                    pass
+
+    if not entries:
+        return json.dumps({"message": f"No calls from {caller}"})
+
+    tool_counts = Counter(e["tool"] for e in entries)
+    errors = [e for e in entries if e.get("error")]
+
+    return json.dumps({
+        "caller": caller,
+        "total_calls": len(entries),
+        "tools_used": dict(tool_counts.most_common()),
+        "error_count": len(errors),
+        "recent_errors": [
+            {"tool": e["tool"], "error": e["error"], "inputs": e.get("inputs")}
+            for e in errors[-3:]
+        ],
+        "period": {
+            "first": entries[0]["timestamp"],
+            "last": entries[-1]["timestamp"],
+        },
+    })
 
 
 # ─── Entry Point ──────────────────────────────────────────
