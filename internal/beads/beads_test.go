@@ -21,6 +21,25 @@ func TestIsContainerType(t *testing.T) {
 	}
 }
 
+func TestIsMemoryType(t *testing.T) {
+	tests := []struct {
+		typ  string
+		want bool
+	}{
+		{"memory", true},
+		{"task", false},
+		{"convoy", false},
+		{"message", false},
+		{"", false},
+		{"MEMORY", false}, // case-sensitive
+	}
+	for _, tt := range tests {
+		if got := IsMemoryType(tt.typ); got != tt.want {
+			t.Errorf("IsMemoryType(%q) = %v, want %v", tt.typ, got, tt.want)
+		}
+	}
+}
+
 func TestIsMoleculeType(t *testing.T) {
 	tests := []struct {
 		typ  string

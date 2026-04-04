@@ -77,6 +77,12 @@ func IsMoleculeType(t string) bool {
 	return moleculeTypes[t]
 }
 
+// IsMemoryType reports whether the bead type represents a persistent
+// agent memory (knowledge, pattern, decision, etc.).
+func IsMemoryType(t string) bool {
+	return t == "memory"
+}
+
 // Dep represents a dependency relationship between two beads. The IssueID
 // depends on (is blocked by) DependsOnID. Type describes the relationship
 // kind (e.g. "blocks", "tracks", "relates-to").
