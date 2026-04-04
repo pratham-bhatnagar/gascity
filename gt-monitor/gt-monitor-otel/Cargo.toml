@@ -1,0 +1,17 @@
+[package]
+name = "gt-monitor-otel"
+description = "OpenTelemetry provider for gt-monitor — metrics, logs, traces from OTLP endpoints"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+gt-monitor-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

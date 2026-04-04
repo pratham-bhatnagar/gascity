@@ -1,0 +1,17 @@
+[package]
+name = "gt-monitor-system"
+description = "System metrics provider for gt-monitor — CPU, memory, disk, processes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+gt-monitor-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sysinfo.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

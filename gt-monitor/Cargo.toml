@@ -2,6 +2,10 @@
 resolver = "2"
 members = [
     "gt-monitor-core",
+    "gt-monitor-system",
+    "gt-monitor-git",
+    "gt-monitor-otel",
+    "gt-monitor-config",
 ]
 
 [workspace.package]
@@ -13,7 +17,11 @@ repository = "https://github.com/gastownhall/gascity"
 [workspace.dependencies]
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
+gt-monitor-core = { path = "gt-monitor-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sysinfo = "0.35"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
+toml = "0.8"
+tracing = "0.1"
