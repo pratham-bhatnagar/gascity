@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "deepwork-intelligence"
+version = "0.1.0"
+description = "Deterministic AI intelligence layer for agent workflows — MCP server with structured LLM output"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Deepwork Labs", email = "hello@deepwork.art" },
+]
+keywords = ["mcp", "ai-agents", "claude-code", "llm", "deterministic", "structured-output"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "mcp>=1.0.0",
+    "openai>=1.0.0",
+    "pydantic>=2.0.0",
+    "pymysql>=1.0.0",
+    "jinja2>=3.0.0",
+    "pyyaml>=6.0.0",
+    "httpx>=0.24.0",
+]
+
+[project.optional-dependencies]
+dashboard = ["chart.js"]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[project.scripts]
+di-server = "deepwork_intelligence.server:main"
+di-dashboard = "deepwork_intelligence.dashboard.api:main"
+
+[project.urls]
+Homepage = "https://mind.deepwork.art"
+Repository = "https://github.com/masti-ai/deepwork-intelligence"
+Documentation = "https://github.com/masti-ai/deepwork-intelligence#readme"
+Issues = "https://github.com/masti-ai/deepwork-intelligence/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agents", "dashboard", "hooks", "templates"]
+include = [
+    "server.py",
+    "config.py",
+    "config.yaml.example",
+    "README.md",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
