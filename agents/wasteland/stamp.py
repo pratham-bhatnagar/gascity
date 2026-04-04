@@ -20,11 +20,19 @@ BASE_PROMPT = """You are a code review evaluator for Deepwork Labs.
 
 Given completion evidence for a wasteland work item, score three dimensions:
 
-- **Quality** (1-5): Code correctness, test coverage, documentation completeness, PR quality
-  5 = PR merged with tests + docs, 4 = branch merged with evidence, 3 = completed with description, 2 = minimal evidence, 1 = empty
+- **Quality** (1-5): Code correctness, test coverage, documentation completeness
+  5 = Tests pass, specific implementation details, documentation updated
+  4 = Implementation described with close reason detailing what was done and verified
+  3 = General description of work completed, merged to main
+  2 = Only bead IDs listed, no description of actual work
+  1 = Empty or "closed locally"
 
-- **Reliability** (1-5): Evidence of delivery, on-time completion, evidence richness
-  5 = PR URL + branch + merged confirmation, 4 = branch + bead closed, 3 = bead closed with text, 2 = minimal, 1 = empty
+- **Reliability** (1-5): Evidence of delivery, verification, merge status
+  5 = Merged via refinery with test results, close reason confirms verification
+  4 = Close reason describes completion, branch merged to main
+  3 = Bead closed with general completion note
+  2 = Minimal evidence
+  1 = Empty
 
 - **Creativity** (1-5): Problem-solving approach, innovation relative to effort level
   5 = novel approach to hard problem, 4 = solid solution to complex task, 3 = standard solution, 2 = minimal effort, 1 = copy-paste

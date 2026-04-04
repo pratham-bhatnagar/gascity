@@ -299,34 +299,59 @@ async def wasteland_complete_matched() -> str:
         closed_ids = [r["id"] for r in closed]
 
         if len(closed_ids) == len(bead_ids):
-            # All beads closed — build RICH evidence
+            # All beads closed — build RICH evidence from bead data + refinery notes
             bead_details = dolt.query(rig_db,
-                f"SELECT id, title, LEFT(description, 300) as description, close_reason "
+                f"SELECT id, title, LEFT(description, 300) as description, "
+                f"close_reason, LEFT(notes, 300) as notes, closed_by_session "
                 f"FROM issues WHERE id IN ({placeholders})",
                 tuple(closed_ids))
 
-            # Get git branch info if available
-            git_info = ""
+            # Get refinery merge events (comments from close events)
+            refinery_notes = ""
             try:
-                r = subprocess.run(
-                    ["git", "log", "--oneline", "-5", "--all", "--grep=" + closed_ids[0]],
-                    cwd=os.path.join(GT_ROOT, rig_db.replace("gtm", "gt_monitor").replace("prd", "products")),
-                    capture_output=True, text=True, timeout=10)
-                if r.stdout.strip():
-                    git_info = f"Git commits: {r.stdout.strip()}"
+                events = dolt.query(rig_db,
+                    f"SELECT event_type, actor, LEFT(comment, 200) as comment "
+                    f"FROM events WHERE issue_id IN ({placeholders}) "
+                    f"AND event_type = 'closed' AND comment != '' "
+                    f"ORDER BY created_at DESC LIMIT 5",
+                    tuple(closed_ids))
+                if events:
+                    refinery_notes = "Refinery notes: " + "; ".join(
+                        e['comment'] for e in events if e.get('comment'))
             except Exception:
                 pass
 
-            # Use MiniMax to generate rich evidence summary
+            # Get git branch info
+            git_info = ""
+            try:
+                rig_path = rig_db
+                for old, new in [("gtm", "gt_monitor"), ("prd", "products"),
+                                 ("villa_ai_planogram", "villa_ai_planogram"),
+                                 ("villa_alc_ai", "villa_alc_ai")]:
+                    if rig_db == old:
+                        rig_path = new
+                        break
+                r = subprocess.run(
+                    ["git", "log", "--oneline", "-5", "--all", "--grep=" + closed_ids[0]],
+                    cwd=os.path.join(GT_ROOT, rig_path),
+                    capture_output=True, text=True, timeout=10)
+                if r.stdout.strip():
+                    git_info = f"Git activity: {r.stdout.strip()}"
+            except Exception:
+                pass
+
+            # Build context from ALL available data
             bead_text = "\n".join(
                 f"- {b['id']}: {b['title']}"
-                + (f"\n  Close reason: {b['close_reason']}" if b.get('close_reason') else "")
-                + (f"\n  Description: {b['description'][:200]}" if b.get('description') else "")
+                + (f"\n  Completed: {b['close_reason']}" if b.get('close_reason') else "")
+                + (f"\n  Notes: {b['notes'][:150]}" if b.get('notes') else "")
+                + (f"\n  Details: {b['description'][:150]}" if b.get('description') else "")
                 for b in bead_details
             )
 
-            evidence_prompt = f"""Summarize this completed work as evidence for a wasteland reputation stamp.
-Write 2-3 sentences that capture: what was built, how it was verified, and the impact.
+            evidence_prompt = f"""Summarize this completed work as evidence for a reputation stamp.
+Write 2-3 sentences covering: what was implemented, test results, and merge status.
+Use the close reasons and notes as primary evidence — they contain the real work details.
 
 Wasteland item: {m['title']}
 Project: {m['project']}
@@ -334,9 +359,10 @@ Project: {m['project']}
 Completed beads:
 {bead_text}
 
+{refinery_notes}
 {git_info}
 
-Write a professional completion summary. Include specific details (not just bead IDs)."""
+Write a factual, evidence-rich summary. Reference specific implementations, test results, and outcomes."""
 
             evidence = generate_text(
                 "You are a technical writer for Deepwork Labs. Write concise, evidence-rich completion summaries.",
