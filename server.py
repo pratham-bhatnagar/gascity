@@ -577,6 +577,159 @@ async def docs_index(rig: str) -> str:
     return json.dumps({"rig": rig, "docs": files, "total": len(files)})
 
 
+# ─── Feedback & Learning ─────────────────────────────────
+
+FEEDBACK_DIR = os.path.join(os.path.dirname(__file__), "feedback")
+os.makedirs(FEEDBACK_DIR, exist_ok=True)
+
+
+@mcp.tool()
+async def feedback_submit(stamp_id: str, actual_quality: int, actual_reliability: int,
+                          actual_creativity: int, notes: str) -> str:
+    """Submit feedback on a stamp's accuracy. Used to improve future scoring.
+
+    Compare what DI scored vs what the actual quality was after human review.
+
+    Args:
+        stamp_id: The stamp ID to give feedback on
+        actual_quality: What quality SHOULD have been (1-5)
+        actual_reliability: What reliability SHOULD have been (1-5)
+        actual_creativity: What creativity SHOULD have been (1-5)
+        notes: Why the score was wrong and what to look for next time
+    """
+    # Get the original stamp
+    rows = dolt.query(WASTELAND_DB,
+        "SELECT id, valence, message FROM stamps WHERE id = %s", (stamp_id,))
+
+    if not rows:
+        return json.dumps({"error": f"Stamp {stamp_id} not found"})
+
+    original = json.loads(rows[0]["valence"])
+
+    feedback_entry = {
+        "stamp_id": stamp_id,
+        "original": original,
+        "corrected": {
+            "quality": actual_quality,
+            "reliability": actual_reliability,
+            "creativity": actual_creativity,
+        },
+        "delta": {
+            "quality": actual_quality - original.get("quality", 0),
+            "reliability": actual_reliability - original.get("reliability", 0),
+            "creativity": actual_creativity - original.get("creativity", 0),
+        },
+        "notes": notes,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Append to feedback log
+    feedback_file = os.path.join(FEEDBACK_DIR, "stamp_feedback.jsonl")
+    with open(feedback_file, "a") as f:
+        f.write(json.dumps(feedback_entry) + "\n")
+
+    return json.dumps({"saved": True, "delta": feedback_entry["delta"]})
+
+
+@mcp.tool()
+async def feedback_summary() -> str:
+    """Get summary of all feedback — what patterns does DI get wrong?
+
+    Returns trends in scoring errors so the stamp agent can be improved.
+    """
+    feedback_file = os.path.join(FEEDBACK_DIR, "stamp_feedback.jsonl")
+
+    if not os.path.exists(feedback_file):
+        return json.dumps({"message": "No feedback yet", "entries": 0})
+
+    entries = []
+    with open(feedback_file) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                entries.append(json.loads(line))
+
+    if not entries:
+        return json.dumps({"message": "No feedback yet", "entries": 0})
+
+    # Compute trends
+    avg_delta_q = sum(e["delta"]["quality"] for e in entries) / len(entries)
+    avg_delta_r = sum(e["delta"]["reliability"] for e in entries) / len(entries)
+    avg_delta_c = sum(e["delta"]["creativity"] for e in entries) / len(entries)
+
+    # Ask MiniMax to analyze patterns
+    notes_text = "\n".join(f"- {e['notes']} (delta Q:{e['delta']['quality']} R:{e['delta']['reliability']} C:{e['delta']['creativity']})"
+                           for e in entries[-20:])  # Last 20
+
+    analysis = generate_text(
+        "You are a scoring calibration analyst for Deepwork Labs. Analyze stamp feedback and identify patterns.",
+        f"""Analyze these feedback entries where humans corrected DI's scoring:
+
+{notes_text}
+
+Average delta: Q:{avg_delta_q:+.1f} R:{avg_delta_r:+.1f} C:{avg_delta_c:+.1f}
+(Positive = DI scored too low, Negative = DI scored too high)
+
+Identify:
+1. What patterns does DI consistently get wrong?
+2. What should the stamp agent look for differently?
+3. Specific calibration suggestions for the system prompt.""",
+        max_tokens=2048,
+    )
+
+    return json.dumps({
+        "entries": len(entries),
+        "avg_delta": {"quality": round(avg_delta_q, 2), "reliability": round(avg_delta_r, 2), "creativity": round(avg_delta_c, 2)},
+        "analysis": analysis,
+        "recent_feedback": entries[-5:],
+    })
+
+
+@mcp.tool()
+async def feedback_apply() -> str:
+    """Apply feedback learnings to improve the stamp agent's system prompt.
+
+    Reads feedback summary, generates calibration notes, saves to feedback/calibration.md.
+    The stamp agent reads this file before scoring to adjust its behavior.
+    """
+    summary_json = await feedback_summary()
+    summary = json.loads(summary_json)
+
+    if summary.get("entries", 0) < 3:
+        return json.dumps({"message": "Need at least 3 feedback entries to calibrate"})
+
+    analysis = summary.get("analysis", "")
+    avg_delta = summary.get("avg_delta", {})
+
+    calibration = f"""# Stamp Agent Calibration Notes
+> Auto-generated from {summary['entries']} feedback entries
+> Last updated: {datetime.now(timezone.utc).isoformat()}
+
+## Scoring Bias
+- Quality: DI scores {avg_delta.get('quality', 0):+.1f} vs human expectation
+- Reliability: DI scores {avg_delta.get('reliability', 0):+.1f} vs human expectation
+- Creativity: DI scores {avg_delta.get('creativity', 0):+.1f} vs human expectation
+
+## Analysis
+{analysis}
+
+## Adjustments
+{"- Score QUALITY higher when bead IDs and branch names are present (even without PR URL)" if avg_delta.get("quality", 0) > 0 else ""}
+{"- Score RELIABILITY higher for completed work with evidence of merge" if avg_delta.get("reliability", 0) > 0 else ""}
+{"- Score CREATIVITY higher for tasks that required multi-bead coordination" if avg_delta.get("creativity", 0) > 0 else ""}
+"""
+
+    cal_path = os.path.join(FEEDBACK_DIR, "calibration.md")
+    with open(cal_path, "w") as f:
+        f.write(calibration)
+
+    return json.dumps({
+        "calibration_saved": cal_path,
+        "bias": avg_delta,
+        "entries_used": summary["entries"],
+    })
+
+
 # ─── Health ────────────────────────────────────────────────
 
 @mcp.tool()

@@ -30,8 +30,9 @@ from server import wasteland_flywheel, wasteland_review_all, wasteland_status
 async def run():
     results = {}
 
-    # Run flywheel for each active rig
-    for rig in ["villa_ai_planogram", "villa_alc_ai", "officeworld"]:
+    # Run flywheel for ALL rigs that have beads
+    for rig in ["villa_ai_planogram", "villa_alc_ai", "officeworld", "deepwork_site",
+                "command_center", "products", "media_studio", "content_studio", "gtm"]:
         try:
             r = await wasteland_flywheel(rig)
             data = json.loads(r)
