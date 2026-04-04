@@ -299,18 +299,58 @@ async def wasteland_complete_matched() -> str:
         closed_ids = [r["id"] for r in closed]
 
         if len(closed_ids) == len(bead_ids):
-            # All beads closed — build rich evidence with titles
+            # All beads closed — build RICH evidence
             bead_details = dolt.query(rig_db,
-                f"SELECT id, title, LEFT(description, 100) as desc FROM issues WHERE id IN ({placeholders})",
+                f"SELECT id, title, LEFT(description, 300) as description, close_reason "
+                f"FROM issues WHERE id IN ({placeholders})",
                 tuple(closed_ids))
-            bead_summary = "; ".join(
-                f"{b['id']}: {b['title']}" for b in bead_details
+
+            # Get git branch info if available
+            git_info = ""
+            try:
+                r = subprocess.run(
+                    ["git", "log", "--oneline", "-5", "--all", "--grep=" + closed_ids[0]],
+                    cwd=os.path.join(GT_ROOT, rig_db.replace("gtm", "gt_monitor").replace("prd", "products")),
+                    capture_output=True, text=True, timeout=10)
+                if r.stdout.strip():
+                    git_info = f"Git commits: {r.stdout.strip()}"
+            except Exception:
+                pass
+
+            # Use MiniMax to generate rich evidence summary
+            bead_text = "\n".join(
+                f"- {b['id']}: {b['title']}"
+                + (f"\n  Close reason: {b['close_reason']}" if b.get('close_reason') else "")
+                + (f"\n  Description: {b['description'][:200]}" if b.get('description') else "")
+                for b in bead_details
             )
-            evidence = (
-                f"All {len(bead_ids)} beads completed and merged. "
-                f"Work: {bead_summary}. "
-                f"Wasteland item: {m['title'][:80]}"
+
+            evidence_prompt = f"""Summarize this completed work as evidence for a wasteland reputation stamp.
+Write 2-3 sentences that capture: what was built, how it was verified, and the impact.
+
+Wasteland item: {m['title']}
+Project: {m['project']}
+
+Completed beads:
+{bead_text}
+
+{git_info}
+
+Write a professional completion summary. Include specific details (not just bead IDs)."""
+
+            evidence = generate_text(
+                "You are a technical writer for Deepwork Labs. Write concise, evidence-rich completion summaries.",
+                evidence_prompt,
+                max_tokens=300,
             )
+
+            if not evidence or len(evidence) < 20:
+                # Fallback to structured evidence
+                evidence = (
+                    f"Completed {len(bead_ids)} tasks for '{m['title']}'. "
+                    + ". ".join(f"{b['title']}" for b in bead_details[:3])
+                    + ". All merged to main."
+                )
 
             # Claim if needed
             dolt.execute(WASTELAND_DB,
