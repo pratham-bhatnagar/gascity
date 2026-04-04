@@ -63,13 +63,13 @@ func TestGetMemoryFields(t *testing.T) {
 	b := beads.Bead{
 		Title: "test memory",
 		Metadata: map[string]string{
-			"memory.kind":        "decision",
-			"memory.confidence":  "0.7",
-			"memory.scope":       "global",
-			"memory.decay_at":    "2026-12-31T23:59:59Z",
-			"memory.source_bead": "gc-abc",
+			"memory.kind":         "decision",
+			"memory.confidence":   "0.7",
+			"memory.scope":        "global",
+			"memory.decay_at":     "2026-12-31T23:59:59Z",
+			"memory.source_bead":  "gc-abc",
 			"memory.access_count": "5",
-			"unrelated.key":      "should be ignored",
+			"unrelated.key":       "should be ignored",
 		},
 	}
 	fields := getMemoryFields(b)
