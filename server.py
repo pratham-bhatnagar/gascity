@@ -12,6 +12,9 @@ Tools:
   github.create_pr      — AI-generated Gitea PR from context
   github.create_release — AI-generated Gitea release notes
   github.update_readme  — AI-rewrite README section + commit
+  memory.remember       — Create a persistent memory bead
+  memory.recall         — Search memories by keyword/scope/kind
+  memory.forget         — Archive stale or specific memories
   reports.overseer      — Generate daily overseer summary
   reports.board         — Generate wasteland leaderboard
 """
@@ -1391,6 +1394,301 @@ async def analytics_agent_report(caller: str) -> str:
             "last": entries[-1]["timestamp"],
         },
     })
+
+
+# ─── Memory Tools ─────────────────────────────────────────
+
+# Memory beads live in per-rig Dolt databases. The default is "gc" (gastown).
+# Callers can specify a rig to target different databases.
+MEMORY_DEFAULT_DB = "gc"
+
+
+def _resolve_memory_db(rig: str = "") -> str:
+    """Resolve a rig name to the Dolt database that holds its beads."""
+    if not rig:
+        return MEMORY_DEFAULT_DB
+    return PROJECT_TO_DB.get(rig, rig)
+
+
+@mcp.tool()
+async def memory_remember(
+    content: str,
+    kind: str = "pattern",
+    scope: str = "rig",
+    confidence: float = 0.8,
+    decay_days: int = 0,
+    source_bead: str = "",
+    rig: str = "",
+) -> str:
+    """Create a persistent memory bead that survives across sessions.
+
+    Args:
+        content: What to remember (becomes the bead title).
+        kind: Memory category — pattern, decision, incident, skill, context, anti-pattern.
+        scope: Visibility — agent, rig, town, global.
+        confidence: Reliability score from 0.0 to 1.0.
+        decay_days: Days until the memory becomes stale (0 = no decay).
+        source_bead: Originating bead ID for provenance tracking.
+        rig: Target rig database (default: gc).
+    """
+    import time as _time
+    _t0 = int(_time.time() * 1000)
+    db = _resolve_memory_db(rig)
+
+    # Validate
+    valid_kinds = {"pattern", "decision", "incident", "skill", "context", "anti-pattern"}
+    if kind not in valid_kinds:
+        return json.dumps({"error": f"Invalid kind '{kind}'. Must be one of: {', '.join(sorted(valid_kinds))}"})
+    valid_scopes = {"agent", "rig", "town", "global"}
+    if scope not in valid_scopes:
+        return json.dumps({"error": f"Invalid scope '{scope}'. Must be one of: {', '.join(sorted(valid_scopes))}"})
+    if not 0.0 <= confidence <= 1.0:
+        return json.dumps({"error": "Confidence must be between 0.0 and 1.0"})
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    decay_at = ""
+    if decay_days > 0:
+        from datetime import timedelta
+        decay_at = (datetime.now(timezone.utc) + timedelta(days=decay_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Generate a short ID
+    id_hash = hashlib.sha256(f"{content}{now}".encode()).hexdigest()[:8]
+    memory_id = f"mem-{id_hash}"
+
+    # Build metadata JSON
+    metadata = {
+        "memory.kind": kind,
+        "memory.confidence": str(confidence),
+        "memory.scope": scope,
+        "memory.access_count": "0",
+        "memory.last_accessed": "",
+    }
+    if decay_at:
+        metadata["memory.decay_at"] = decay_at
+    if source_bead:
+        metadata["memory.source_bead"] = source_bead
+    metadata_json = json.dumps(metadata)
+
+    try:
+        dolt.execute(db,
+            "INSERT INTO issues (id, title, description, design, acceptance_criteria, notes, "
+            "status, issue_type, priority, created_at, updated_at, metadata) "
+            "VALUES (%s, %s, '', '', '', '', 'open', 'memory', 2, %s, %s, %s)",
+            (memory_id, content, now, now, metadata_json))
+        dolt.commit_and_push(db, f"memory: remember '{content[:50]}' ({memory_id})")
+    except Exception as e:
+        _output = json.dumps({"error": f"Failed to create memory: {e}"})
+        _log_tool_call("memory_remember", _get_caller(),
+                       {"content": content, "kind": kind, "scope": scope}, _output,
+                       int(_time.time() * 1000) - _t0, error=str(e))
+        return _output
+
+    _output = json.dumps({
+        "id": memory_id,
+        "title": content,
+        "kind": kind,
+        "scope": scope,
+        "confidence": confidence,
+        "decay_at": decay_at or None,
+        "source_bead": source_bead or None,
+    })
+    _log_tool_call("memory_remember", _get_caller(),
+                   {"content": content, "kind": kind, "scope": scope, "confidence": confidence},
+                   _output, int(_time.time() * 1000) - _t0)
+    return _output
+
+
+@mcp.tool()
+async def memory_recall(
+    query: str = "",
+    scope: str = "",
+    kind: str = "",
+    min_confidence: float = 0.0,
+    limit: int = 20,
+    rig: str = "",
+) -> str:
+    """Search persistent memories by keyword, scope, kind, or confidence.
+
+    Returns matching memory beads sorted by most recently created. Each
+    recall bumps the memory's access count and last_accessed timestamp.
+
+    Args:
+        query: Keyword to search in memory titles (empty = all).
+        scope: Filter by scope — agent, rig, town, global (empty = all).
+        kind: Filter by kind — pattern, decision, incident, skill, context, anti-pattern (empty = all).
+        min_confidence: Minimum confidence threshold (0.0–1.0).
+        limit: Maximum number of results (default 20).
+        rig: Target rig database (default: gc).
+    """
+    import time as _time
+    _t0 = int(_time.time() * 1000)
+    db = _resolve_memory_db(rig)
+
+    # Build SQL with filters
+    conditions = ["issue_type = 'memory'", "status = 'open'"]
+    params: list = []
+
+    if query:
+        conditions.append("title LIKE %s")
+        params.append(f"%{query}%")
+    if scope:
+        conditions.append("JSON_EXTRACT(metadata, '$.\"memory.scope\"') = %s")
+        params.append(scope)
+    if kind:
+        conditions.append("JSON_EXTRACT(metadata, '$.\"memory.kind\"') = %s")
+        params.append(kind)
+
+    where = " AND ".join(conditions)
+    sql = f"SELECT id, title, metadata, created_at FROM issues WHERE {where} ORDER BY created_at DESC LIMIT %s"
+    params.append(limit)
+
+    try:
+        rows = dolt.query(db, sql, tuple(params))
+    except Exception as e:
+        _output = json.dumps({"error": f"Recall failed: {e}"})
+        _log_tool_call("memory_recall", _get_caller(),
+                       {"query": query, "scope": scope}, _output,
+                       int(_time.time() * 1000) - _t0, error=str(e))
+        return _output
+
+    # Filter by min_confidence in Python (JSON_EXTRACT returns strings)
+    memories = []
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for row in rows:
+        meta = row.get("metadata") or {}
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+
+        conf = float(meta.get("memory.confidence", "0"))
+        if conf < min_confidence:
+            continue
+
+        memories.append({
+            "id": row["id"],
+            "title": row["title"],
+            "kind": meta.get("memory.kind", ""),
+            "scope": meta.get("memory.scope", ""),
+            "confidence": conf,
+            "decay_at": meta.get("memory.decay_at", ""),
+            "access_count": int(meta.get("memory.access_count", "0")) + 1,
+            "created_at": str(row.get("created_at", "")),
+        })
+
+    # Bump access stats for recalled memories
+    if memories:
+        for mem in memories:
+            try:
+                dolt.execute(db,
+                    "UPDATE issues SET metadata = JSON_SET(metadata, "
+                    "'$.\"memory.access_count\"', %s, "
+                    "'$.\"memory.last_accessed\"', %s) "
+                    "WHERE id = %s",
+                    (str(mem["access_count"]), now, mem["id"]))
+            except Exception:
+                pass  # Best-effort access tracking
+        try:
+            dolt.commit_and_push(db, f"memory: recall ({len(memories)} memories accessed)")
+        except Exception:
+            pass
+
+    _output = json.dumps({
+        "count": len(memories),
+        "memories": memories,
+    })
+    _log_tool_call("memory_recall", _get_caller(),
+                   {"query": query, "scope": scope, "kind": kind,
+                    "min_confidence": min_confidence, "limit": limit},
+                   _output, int(_time.time() * 1000) - _t0)
+    return _output
+
+
+@mcp.tool()
+async def memory_forget(
+    memory_id: str = "",
+    stale: bool = False,
+    rig: str = "",
+) -> str:
+    """Archive (close) memory beads that are no longer useful.
+
+    Either provide a specific memory_id to forget, or set stale=True to
+    automatically archive all memories past their decay_at timestamp.
+
+    Args:
+        memory_id: Specific memory bead ID to archive (e.g. mem-abc12345).
+        stale: If true, archive all memories past their decay_at timestamp.
+        rig: Target rig database (default: gc).
+    """
+    import time as _time
+    _t0 = int(_time.time() * 1000)
+    db = _resolve_memory_db(rig)
+
+    if not memory_id and not stale:
+        return json.dumps({"error": "Provide memory_id or set stale=True"})
+
+    archived = []
+
+    # Archive specific memory
+    if memory_id:
+        try:
+            affected = dolt.execute(db,
+                "UPDATE issues SET status = 'closed', updated_at = NOW() "
+                "WHERE id = %s AND issue_type = 'memory' AND status = 'open'",
+                (memory_id,))
+            if affected > 0:
+                archived.append(memory_id)
+            else:
+                return json.dumps({"error": f"Memory {memory_id} not found or already archived"})
+        except Exception as e:
+            _output = json.dumps({"error": f"Failed to archive: {e}"})
+            _log_tool_call("memory_forget", _get_caller(),
+                           {"memory_id": memory_id}, _output,
+                           int(_time.time() * 1000) - _t0, error=str(e))
+            return _output
+
+    # Archive stale memories
+    if stale:
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            rows = dolt.query(db,
+                "SELECT id, metadata FROM issues "
+                "WHERE issue_type = 'memory' AND status = 'open'")
+            for row in rows:
+                meta = row.get("metadata") or {}
+                if isinstance(meta, str):
+                    try:
+                        meta = json.loads(meta)
+                    except Exception:
+                        continue
+                decay_at = meta.get("memory.decay_at", "")
+                if decay_at and decay_at <= now:
+                    dolt.execute(db,
+                        "UPDATE issues SET status = 'closed', updated_at = NOW() "
+                        "WHERE id = %s", (row["id"],))
+                    archived.append(row["id"])
+        except Exception as e:
+            _output = json.dumps({"error": f"Stale cleanup failed: {e}", "archived": archived})
+            _log_tool_call("memory_forget", _get_caller(),
+                           {"stale": True}, _output,
+                           int(_time.time() * 1000) - _t0, error=str(e))
+            return _output
+
+    if archived:
+        try:
+            dolt.commit_and_push(db, f"memory: forget {len(archived)} memories")
+        except Exception:
+            pass
+
+    _output = json.dumps({
+        "archived": archived,
+        "count": len(archived),
+    })
+    _log_tool_call("memory_forget", _get_caller(),
+                   {"memory_id": memory_id, "stale": stale},
+                   _output, int(_time.time() * 1000) - _t0)
+    return _output
 
 
 # ─── Entry Point ──────────────────────────────────────────
