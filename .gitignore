@@ -28,3 +28,12 @@ reports/
 # Beads / Dolt files (added by bd init)
 .beads-credential-key
 .cache/
+
+# Gas Town (added by gt)
+.runtime/
+.logs/
+__pycache__/
+state.json
+
+# Rust build artifacts
+gt-monitor/target/
