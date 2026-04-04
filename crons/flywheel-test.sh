@@ -25,7 +25,8 @@ import sys, asyncio, json, os
 sys.path.insert(0, os.path.expanduser("~/gt/deepwork_intelligence"))
 sys.path.insert(0, os.path.expanduser("~/gt/deepwork_intelligence/agents"))
 
-from server import wasteland_flywheel, wasteland_review_all, wasteland_status
+from server import wasteland_flywheel, wasteland_review_all, wasteland_status, _log_tool_call
+import time
 
 async def run():
     results = {}
@@ -34,15 +35,19 @@ async def run():
     for rig in ["villa_ai_planogram", "villa_alc_ai", "officeworld", "deepwork_site",
                 "command_center", "products", "media_studio", "content_studio", "gtm"]:
         try:
+            t0 = int(time.time() * 1000)
             r = await wasteland_flywheel(rig)
+            latency = int(time.time() * 1000) - t0
             data = json.loads(r)
             maps = data["steps"][0]["result"].get("total", 0) if data["steps"] else 0
             completes = data["steps"][1]["result"].get("completed", 0) if len(data["steps"]) > 1 else 0
             reviews = data["steps"][2]["result"].get("reviewed", 0) if len(data["steps"]) > 2 else 0
             results[rig] = {"maps": maps, "completes": completes, "reviews": reviews}
+            _log_tool_call("wasteland_flywheel", "cron/flywheel", {"rig": rig}, r, latency)
             print(f"{rig}: maps={maps} completes={completes} reviews={reviews}", file=sys.stderr)
         except Exception as e:
             results[rig] = {"error": str(e)[:100]}
+            _log_tool_call("wasteland_flywheel", "cron/flywheel", {"rig": rig}, "", 0, str(e)[:200])
             print(f"{rig}: ERROR {e}", file=sys.stderr)
 
     # Also run standalone review for anything missed
