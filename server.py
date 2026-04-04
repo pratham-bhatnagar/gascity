@@ -267,11 +267,12 @@ async def wasteland_complete_matched() -> str:
 
     No args needed — reads from bead_mappings table automatically.
     """
-    # Get all mappings where wasteland item is still open/claimed
+    # Get all mappings where wasteland item is open/claimed AND has no completion yet
     mappings = dolt.query(WASTELAND_DB,
         "SELECT DISTINCT bm.wasteland_id, w.title, w.project "
         "FROM bead_mappings bm JOIN wanted w ON w.id = bm.wasteland_id "
-        "WHERE w.status IN ('open', 'claimed')")
+        "LEFT JOIN completions c ON c.wanted_id = w.id "
+        "WHERE w.status IN ('open', 'claimed') AND c.id IS NULL")
 
     completed = 0
     for m in mappings:
