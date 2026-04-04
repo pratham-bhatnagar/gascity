@@ -227,7 +227,7 @@ async def wasteland_map_beads(rig: str) -> str:
 
     # Get open wasteland items for this project
     items = dolt.query(WASTELAND_DB,
-        "SELECT id, title, project FROM wanted "
+        "SELECT id, title, project, LEFT(description, 300) as description FROM wanted "
         "WHERE status IN ('open', 'claimed') AND project = %s", (project,))
 
     if not items:
@@ -235,7 +235,7 @@ async def wasteland_map_beads(rig: str) -> str:
 
     # Get all beads for this rig
     beads = dolt.query(rig,
-        "SELECT id, title, status FROM issues ORDER BY updated_at DESC LIMIT 100")
+        "SELECT id, title, status, LEFT(description, 200) as description FROM issues ORDER BY updated_at DESC LIMIT 100")
 
     if not beads:
         return json.dumps({"mappings": [], "message": f"No beads in {rig}"})
@@ -298,8 +298,18 @@ async def wasteland_complete_matched() -> str:
         closed_ids = [r["id"] for r in closed]
 
         if len(closed_ids) == len(bead_ids):
-            # All beads closed — submit completion
-            evidence = f"All {len(bead_ids)} mapped beads closed: {', '.join(closed_ids)}"
+            # All beads closed — build rich evidence with titles
+            bead_details = dolt.query(rig_db,
+                f"SELECT id, title, LEFT(description, 100) as desc FROM issues WHERE id IN ({placeholders})",
+                tuple(closed_ids))
+            bead_summary = "; ".join(
+                f"{b['id']}: {b['title']}" for b in bead_details
+            )
+            evidence = (
+                f"All {len(bead_ids)} beads completed and merged. "
+                f"Work: {bead_summary}. "
+                f"Wasteland item: {m['title'][:80]}"
+            )
 
             # Claim if needed
             dolt.execute(WASTELAND_DB,

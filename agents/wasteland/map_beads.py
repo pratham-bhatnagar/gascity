@@ -32,14 +32,16 @@ def map_beads(
 ) -> MapResult | None:
     """Match beads to wasteland items semantically."""
 
-    # Format for LLM
+    # Format for LLM — include descriptions for better semantic matching
     wl_text = "\n".join(
         f"- {item['id']}: {item['title']} (project: {item.get('project', '?')})"
+        + (f"\n  Context: {item['description'][:150]}" if item.get('description') else "")
         for item in wasteland_items
     )
 
     bead_text = "\n".join(
         f"- {bead['id']}: {bead['title']} [status: {bead.get('status', '?')}]"
+        + (f"\n  Context: {bead['description'][:100]}" if bead.get('description') else "")
         for bead in beads
     )
 

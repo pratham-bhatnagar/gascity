@@ -102,7 +102,7 @@ fi
 log "Rig resolved: $RIG — launching flywheel in background"
 
 # Run the flywheel in the background so we don't block the tool call
-nohup python3 "$DI_ROOT/hooks/run_flywheel.py" "$RIG" >> "$LOGFILE" 2>&1 &
+nohup python3 "$DI_ROOT/hooks/run_flywheel.py" "$RIG" "$BEAD_ID" >> "$LOGFILE" 2>&1 &
 
 log "Flywheel launched (pid=$!) for rig=$RIG bead=$BEAD_ID"
 exit 0
