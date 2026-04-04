@@ -8,6 +8,10 @@ Tools:
   wasteland.map_beads   — Semantic bead-to-wasteland matching
   wasteland.complete    — Submit completion for matched items
   wasteland.status      — Current wasteland board status
+  github.create_issue   — AI-generated Gitea issue from context
+  github.create_pr      — AI-generated Gitea PR from context
+  github.create_release — AI-generated Gitea release notes
+  github.update_readme  — AI-rewrite README section + commit
   reports.overseer      — Generate daily overseer summary
   reports.board         — Generate wasteland leaderboard
 """
@@ -29,7 +33,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "agents"))
 
 from shared.dolt import DoltClient
 from shared.llm import generate_structured, generate_text, configure as configure_llm
-from shared.schemas import StampResult, MapResult, OverseerReport, BoardReport
+from shared.schemas import (StampResult, MapResult, OverseerReport, BoardReport,
+                            GitIssue, GitPR, GitRelease)
 
 # Add parent for config import
 sys.path.insert(0, os.path.dirname(__file__))
@@ -52,6 +57,9 @@ configure_llm(
 
 GT_ROOT = cfg.gt_root
 WASTELAND_DB = cfg.wasteland.database
+GITEA_URL = cfg.gitea.url
+GITEA_TOKEN = cfg.gitea.token
+GITEA_ORG = cfg.gitea.org
 
 # ─── Usage Logging ────────────────────────────────────────
 # Logs every tool call: who called, what tool, input/output, latency, tokens
@@ -110,10 +118,11 @@ mcp = FastMCP(
     instructions="""Deepwork Intelligence — deterministic AI tools for Gas Town.
 
 These tools use MiniMax M2.5 (local GPU) for smart structured output.
-Use them for wasteland operations, reports, and content generation.
+Use them for wasteland operations, GitHub/Gitea management, reports, and content generation.
 
 IMPORTANT: wasteland data is in the 'wl_commons' Dolt database.
-Bead data is in per-rig databases (villa_ai_planogram, villa_alc_ai, etc.).""",
+Bead data is in per-rig databases (villa_ai_planogram, villa_alc_ai, etc.).
+GitHub/Gitea tools post to the internal Gitea instance via REST API.""",
 )
 
 
@@ -784,6 +793,336 @@ async def feedback_apply() -> str:
         "bias": avg_delta,
         "entries_used": summary["entries"],
     })
+
+
+# ─── GitHub / Gitea Tools ────────────────────────────────
+
+GITHUB_SYSTEM_PROMPT = """You are a senior software engineer at Deepwork Labs.
+You write clear, well-structured GitHub issues, pull requests, and release notes.
+Always include actionable details. Use markdown formatting.
+Never include internal infrastructure details (ports, tokens, server names)."""
+
+
+def _gitea_headers() -> dict:
+    """Build Gitea API request headers."""
+    return {
+        "Authorization": f"token {GITEA_TOKEN}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+
+def _gitea_repo_name(rig: str) -> str:
+    """Map rig name to Gitea repo name. Convention: rig DB name → repo slug."""
+    rig_to_repo = {
+        "villa_ai_planogram": "ai-planogram",
+        "villa_alc_ai": "alc-ai-villa",
+        "officeworld": "OfficeWorld",
+        "gt_arcade": "OfficeWorld",
+    }
+    return rig_to_repo.get(rig, rig)
+
+
+@mcp.tool()
+async def github_create_issue(rig: str, title: str, context: str) -> str:
+    """Create a Gitea issue using MiniMax to generate formatted body, labels, and priority.
+
+    Args:
+        rig: Rig name (e.g. villa_ai_planogram, villa_alc_ai)
+        title: Short issue title or natural language description
+        context: All relevant context — what needs doing, why, acceptance criteria, related beads
+    """
+    import httpx
+    import time as _time
+    _t0 = int(_time.time() * 1000)
+
+    prompt = f"""Create a GitHub issue for the {rig} project.
+
+Title hint: {title}
+
+Context:
+{context}
+
+Generate a well-structured issue with:
+- A clear, actionable title
+- Markdown body with: Context, Problem/Goal, Acceptance Criteria (checklist), and any relevant notes
+- Appropriate labels (pick from: bug, feature, enhancement, docs, refactor, P0, P1, P2, P3)
+- Priority level (P0=critical, P1=high, P2=medium, P3=low)"""
+
+    result = generate_structured(GITHUB_SYSTEM_PROMPT, prompt, GitIssue)
+
+    if not result:
+        return json.dumps({"error": "MiniMax issue generation failed — vLLM may be down"})
+
+    # Post to Gitea API
+    repo = _gitea_repo_name(rig)
+    api_url = f"{GITEA_URL}/api/v1/repos/{GITEA_ORG}/{repo}/issues"
+
+    # Filter labels to only use priority as a label (Gitea labels must exist)
+    issue_labels = result.labels
+
+    payload = {
+        "title": result.title,
+        "body": result.body,
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # Create the issue
+            resp = await client.post(api_url, headers=_gitea_headers(),
+                                     json=payload, timeout=15)
+
+            if resp.status_code not in (200, 201):
+                return json.dumps({
+                    "error": f"Gitea API error: {resp.status_code}",
+                    "detail": resp.text[:500],
+                    "generated": result.model_dump(),
+                })
+
+            issue_data = resp.json()
+
+            # Try to add labels (best-effort — labels may not exist in repo)
+            issue_number = issue_data.get("number")
+            if issue_labels and issue_number:
+                labels_url = f"{GITEA_URL}/api/v1/repos/{GITEA_ORG}/{repo}/labels"
+                labels_resp = await client.get(labels_url, headers=_gitea_headers(), timeout=10)
+                if labels_resp.status_code == 200:
+                    existing_labels = {l["name"]: l["id"] for l in labels_resp.json()}
+                    label_ids = [existing_labels[l] for l in issue_labels if l in existing_labels]
+                    if label_ids:
+                        await client.post(
+                            f"{GITEA_URL}/api/v1/repos/{GITEA_ORG}/{repo}/issues/{issue_number}/labels",
+                            headers=_gitea_headers(),
+                            json={"labels": label_ids},
+                            timeout=10,
+                        )
+
+            _output = json.dumps({
+                "issue_number": issue_data.get("number"),
+                "url": issue_data.get("html_url"),
+                "title": result.title,
+                "labels": issue_labels,
+                "priority": result.priority,
+            })
+            _log_tool_call("github_create_issue", _get_caller(),
+                           {"rig": rig, "title": title}, _output,
+                           int(_time.time() * 1000) - _t0)
+            return _output
+
+    except httpx.TimeoutException:
+        return json.dumps({"error": "Gitea API timeout", "generated": result.model_dump()})
+    except Exception as e:
+        return json.dumps({"error": f"Gitea API error: {e}", "generated": result.model_dump()})
+
+
+@mcp.tool()
+async def github_create_pr(rig: str, branch: str, base_branch: str, context: str) -> str:
+    """Create a Gitea pull request using MiniMax to generate title and body.
+
+    Args:
+        rig: Rig name (e.g. villa_ai_planogram)
+        branch: Source branch name (head)
+        base_branch: Target branch to merge into (e.g. main, dev)
+        context: Description of changes — what was done, why, what to test
+    """
+    import httpx
+    import time as _time
+    _t0 = int(_time.time() * 1000)
+
+    prompt = f"""Create a GitHub pull request for the {rig} project.
+
+Branch: {branch} → {base_branch}
+
+Context:
+{context}
+
+Generate:
+- A concise PR title (under 70 chars)
+- A markdown body with: Summary (bullet points), Changes made, Test plan (checklist)
+- Never include internal ports, tokens, or server names"""
+
+    result = generate_structured(GITHUB_SYSTEM_PROMPT, prompt, GitPR)
+
+    if not result:
+        return json.dumps({"error": "MiniMax PR generation failed — vLLM may be down"})
+
+    repo = _gitea_repo_name(rig)
+    api_url = f"{GITEA_URL}/api/v1/repos/{GITEA_ORG}/{repo}/pulls"
+
+    payload = {
+        "title": result.title,
+        "body": result.body,
+        "head": branch,
+        "base": base_branch,
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(api_url, headers=_gitea_headers(),
+                                     json=payload, timeout=15)
+
+            if resp.status_code not in (200, 201):
+                return json.dumps({
+                    "error": f"Gitea API error: {resp.status_code}",
+                    "detail": resp.text[:500],
+                    "generated": result.model_dump(),
+                })
+
+            pr_data = resp.json()
+            _output = json.dumps({
+                "pr_number": pr_data.get("number"),
+                "url": pr_data.get("html_url"),
+                "title": result.title,
+                "head": branch,
+                "base": base_branch,
+            })
+            _log_tool_call("github_create_pr", _get_caller(),
+                           {"rig": rig, "branch": branch, "base_branch": base_branch},
+                           _output, int(_time.time() * 1000) - _t0)
+            return _output
+
+    except httpx.TimeoutException:
+        return json.dumps({"error": "Gitea API timeout", "generated": result.model_dump()})
+    except Exception as e:
+        return json.dumps({"error": f"Gitea API error: {e}", "generated": result.model_dump()})
+
+
+@mcp.tool()
+async def github_create_release(rig: str, version: str, context: str) -> str:
+    """Create a Gitea release using MiniMax to generate release notes.
+
+    Args:
+        rig: Rig name (e.g. villa_ai_planogram)
+        version: Semantic version (e.g. 1.2.0) — will be prefixed with v
+        context: Release context — git log, changelog entries, feature descriptions
+    """
+    import httpx
+    import time as _time
+    _t0 = int(_time.time() * 1000)
+
+    # Gather git log for context if not provided
+    repo_name = _gitea_repo_name(rig)
+    enriched_context = context
+
+    try:
+        r = subprocess.run(
+            ["git", "log", "--oneline", "-30"],
+            cwd=os.path.join(GT_ROOT, rig), capture_output=True, text=True, timeout=10)
+        if r.stdout:
+            enriched_context += f"\n\nRecent git history:\n{r.stdout}"
+    except Exception:
+        pass
+
+    prompt = f"""Create release notes for {rig} version {version}.
+
+Context:
+{enriched_context}
+
+Generate:
+- tag_name: semantic version tag (e.g. v1.2.0)
+- name: human-readable release title (e.g. "v1.2.0 — Shelf Detection Overhaul")
+- body: markdown release notes with Highlights, What's New, Bug Fixes, Breaking Changes (if any)
+- Never include internal ports, tokens, or server names"""
+
+    result = generate_structured(GITHUB_SYSTEM_PROMPT, prompt, GitRelease)
+
+    if not result:
+        return json.dumps({"error": "MiniMax release generation failed — vLLM may be down"})
+
+    api_url = f"{GITEA_URL}/api/v1/repos/{GITEA_ORG}/{repo_name}/releases"
+
+    payload = {
+        "tag_name": result.tag_name,
+        "name": result.name,
+        "body": result.body,
+        "draft": False,
+        "prerelease": False,
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(api_url, headers=_gitea_headers(),
+                                     json=payload, timeout=15)
+
+            if resp.status_code not in (200, 201):
+                return json.dumps({
+                    "error": f"Gitea API error: {resp.status_code}",
+                    "detail": resp.text[:500],
+                    "generated": result.model_dump(),
+                })
+
+            release_data = resp.json()
+            _output = json.dumps({
+                "release_id": release_data.get("id"),
+                "url": release_data.get("html_url"),
+                "tag": result.tag_name,
+                "name": result.name,
+            })
+            _log_tool_call("github_create_release", _get_caller(),
+                           {"rig": rig, "version": version}, _output,
+                           int(_time.time() * 1000) - _t0)
+            return _output
+
+    except httpx.TimeoutException:
+        return json.dumps({"error": "Gitea API timeout", "generated": result.model_dump()})
+    except Exception as e:
+        return json.dumps({"error": f"Gitea API error: {e}", "generated": result.model_dump()})
+
+
+@mcp.tool()
+async def github_update_readme(rig: str, section: str, context: str) -> str:
+    """Rewrite a specific section of a rig's README using MiniMax, then commit.
+
+    Args:
+        rig: Rig name (e.g. villa_ai_planogram)
+        section: Section heading to rewrite (e.g. "Installation", "API Reference")
+        context: New information/context for this section
+    """
+    import time as _time
+    _t0 = int(_time.time() * 1000)
+
+    readme_path = os.path.join(GT_ROOT, rig, "README.md")
+
+    if not os.path.exists(readme_path):
+        return json.dumps({"error": f"README.md not found at {readme_path}"})
+
+    existing = open(readme_path).read()
+
+    prompt = f"""Rewrite the "{section}" section of this README with updated information.
+
+FULL README:
+{existing[:6000]}
+
+SECTION TO REWRITE: {section}
+NEW INFORMATION: {context}
+
+Output the COMPLETE README with the section rewritten. Keep all other sections unchanged.
+Never include internal ports, tokens, or server names."""
+
+    updated = generate_text(GITHUB_SYSTEM_PROMPT, prompt, max_tokens=8192)
+
+    if not updated:
+        return json.dumps({"error": "MiniMax README generation failed — vLLM may be down"})
+
+    with open(readme_path, "w") as f:
+        f.write(updated)
+
+    # Git commit
+    rig_dir = os.path.join(GT_ROOT, rig)
+    subprocess.run(["git", "add", "README.md"], cwd=rig_dir,
+                   capture_output=True, timeout=10)
+    subprocess.run(["git", "commit", "-m", f"docs: update README — {section}"],
+                   cwd=rig_dir, capture_output=True, timeout=10)
+
+    _output = json.dumps({
+        "path": readme_path,
+        "section": section,
+        "size": len(updated),
+    })
+    _log_tool_call("github_update_readme", _get_caller(),
+                   {"rig": rig, "section": section}, _output,
+                   int(_time.time() * 1000) - _t0)
+    return _output
 
 
 # ─── Health ────────────────────────────────────────────────

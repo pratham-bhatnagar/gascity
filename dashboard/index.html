@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DEEPWORK INTELLIGENCE — Analytics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: #1a1a1a;
+    --accent: #00ff88;
+    --accent-dim: #00cc6a;
+    --text: #e0e0e0;
+    --text-dim: #666;
+    --error: #ff4444;
+    --warn: #ffaa00;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  header {
+    padding: 24px 32px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--accent);
+  }
+  header h1 span { color: var(--text-dim); font-weight: 400; }
+  .refresh-info {
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  .refresh-info .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  main { padding: 24px 32px; }
+
+  /* Cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 20px;
+  }
+  .card .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .card .value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .card .value.error { color: var(--error); }
+  .card .sub {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* Charts */
+  .charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .chart-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 20px;
+  }
+  .chart-box.full { grid-column: 1 / -1; }
+  .chart-box h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+  }
+  .chart-box canvas { max-height: 280px; }
+
+  /* Tables */
+  .tables {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .table-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 20px;
+    overflow-x: auto;
+  }
+  .table-box h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  th {
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #141414;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  tr:hover td { background: #0d0d0d; }
+  .status-ok { color: var(--accent); }
+  .status-err { color: var(--error); }
+  .latency-high { color: var(--warn); }
+  .empty-state {
+    text-align: center;
+    color: var(--text-dim);
+    padding: 40px 20px;
+    font-size: 12px;
+  }
+
+  @media (max-width: 768px) {
+    header, main { padding: 16px; }
+    .charts { grid-template-columns: 1fr; }
+    .cards { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>DEEPWORK INTELLIGENCE <span>— Analytics</span></h1>
+  <div class="refresh-info"><span class="dot"></span>Auto-refresh 30s</div>
+</header>
+
+<main>
+  <!-- Stat Cards -->
+  <div class="cards">
+    <div class="card">
+      <div class="label">Total Calls</div>
+      <div class="value" id="stat-total">—</div>
+      <div class="sub" id="stat-total-sub"></div>
+    </div>
+    <div class="card">
+      <div class="label">Error Rate</div>
+      <div class="value" id="stat-errors">—</div>
+      <div class="sub" id="stat-errors-sub"></div>
+    </div>
+    <div class="card">
+      <div class="label">Avg Latency</div>
+      <div class="value" id="stat-latency">—</div>
+      <div class="sub" id="stat-latency-sub"></div>
+    </div>
+    <div class="card">
+      <div class="label">Active Tools</div>
+      <div class="value" id="stat-tools">—</div>
+      <div class="sub" id="stat-tools-sub"></div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts">
+    <div class="chart-box full">
+      <h3>Tool Usage Over Time</h3>
+      <canvas id="chart-timeline"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Calls by Tool</h3>
+      <canvas id="chart-tools"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Calls by Agent</h3>
+      <canvas id="chart-agents"></canvas>
+    </div>
+  </div>
+
+  <!-- Tables -->
+  <div class="tables">
+    <div class="table-box">
+      <h3>Recent Tool Calls</h3>
+      <div id="table-calls"></div>
+    </div>
+    <div class="table-box">
+      <h3>Recent Errors</h3>
+      <div id="table-errors"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const API = window.location.origin;
+let chartTimeline, chartTools, chartAgents;
+
+const COLORS = [
+  '#00ff88', '#00ccff', '#ff6644', '#ffaa00', '#cc44ff',
+  '#44aaff', '#ff4488', '#88ff44', '#ffcc00', '#ff8844'
+];
+
+function chartDefaults() {
+  Chart.defaults.color = '#666';
+  Chart.defaults.borderColor = '#1a1a1a';
+  Chart.defaults.font.family = "'SF Mono', 'Fira Code', monospace";
+  Chart.defaults.font.size = 11;
+}
+
+function initCharts() {
+  chartDefaults();
+
+  chartTimeline = new Chart(document.getElementById('chart-timeline'), {
+    type: 'line',
+    data: { labels: [], datasets: [] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        x: { grid: { color: '#141414' } },
+        y: { grid: { color: '#141414' }, beginAtZero: true }
+      },
+      plugins: { legend: { position: 'top', labels: { usePointStyle: true, pointStyleWidth: 8 } } }
+    }
+  });
+
+  chartTools = new Chart(document.getElementById('chart-tools'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: COLORS, borderWidth: 0 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      scales: {
+        x: { grid: { color: '#141414' }, beginAtZero: true },
+        y: { grid: { display: false } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  chartAgents = new Chart(document.getElementById('chart-agents'), {
+    type: 'doughnut',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: COLORS, borderWidth: 0 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '55%',
+      plugins: {
+        legend: { position: 'right', labels: { usePointStyle: true, pointStyleWidth: 8, padding: 12 } }
+      }
+    }
+  });
+}
+
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    + ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function fmtLatency(ms) {
+  if (ms == null) return '—';
+  if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+  return ms + 'ms';
+}
+
+function renderCallsTable(calls) {
+  const el = document.getElementById('table-calls');
+  if (!calls || calls.length === 0) {
+    el.innerHTML = '<div class="empty-state">No tool calls recorded yet</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Time</th><th>Tool</th><th>Caller</th><th>Latency</th><th>Output</th><th>Status</th></tr></thead><tbody>';
+  calls.forEach(c => {
+    const cls = c.error ? 'status-err' : 'status-ok';
+    const latCls = c.latency_ms > 5000 ? 'latency-high' : '';
+    html += `<tr>
+      <td>${fmtTime(c.timestamp)}</td>
+      <td>${c.tool || '—'}</td>
+      <td>${c.caller || '—'}</td>
+      <td class="${latCls}">${fmtLatency(c.latency_ms)}</td>
+      <td>${(c.output_size || 0).toLocaleString()} B</td>
+      <td class="${cls}">${c.error ? 'ERR' : 'OK'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function renderErrorsTable(errors) {
+  const el = document.getElementById('table-errors');
+  if (!errors || errors.length === 0) {
+    el.innerHTML = '<div class="empty-state">No errors recorded</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Time</th><th>Tool</th><th>Caller</th><th>Error</th></tr></thead><tbody>';
+  errors.forEach(e => {
+    html += `<tr>
+      <td>${fmtTime(e.timestamp)}</td>
+      <td>${e.tool || '—'}</td>
+      <td>${e.caller || '—'}</td>
+      <td class="status-err" style="white-space:normal;max-width:500px;">${(e.error || '').substring(0, 200)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function updateCards(data) {
+  document.getElementById('stat-total').textContent = (data.total_calls || 0).toLocaleString();
+  document.getElementById('stat-total-sub').textContent = `last 24h: ${(data.calls_24h || 0).toLocaleString()}`;
+
+  const errRate = data.total_calls > 0 ? ((data.error_count / data.total_calls) * 100).toFixed(1) : '0.0';
+  const errEl = document.getElementById('stat-errors');
+  errEl.textContent = errRate + '%';
+  if (parseFloat(errRate) > 10) errEl.classList.add('error');
+  else errEl.classList.remove('error');
+  document.getElementById('stat-errors-sub').textContent = `${data.error_count || 0} errors total`;
+
+  const avgLat = data.avg_latency_ms || 0;
+  document.getElementById('stat-latency').textContent = fmtLatency(Math.round(avgLat));
+  document.getElementById('stat-latency-sub').textContent = `p95: ${fmtLatency(data.p95_latency_ms || 0)}`;
+
+  document.getElementById('stat-tools').textContent = data.active_tools || 0;
+  document.getElementById('stat-tools-sub').textContent = `${data.active_callers || 0} callers`;
+}
+
+function updateCharts(data) {
+  // Timeline
+  const tl = data.timeline || {};
+  const dates = Object.keys(tl).sort();
+  const toolSet = new Set();
+  dates.forEach(d => Object.keys(tl[d]).forEach(t => toolSet.add(t)));
+  const tools = [...toolSet];
+
+  chartTimeline.data.labels = dates;
+  chartTimeline.data.datasets = tools.map((t, i) => ({
+    label: t,
+    data: dates.map(d => (tl[d] || {})[t] || 0),
+    borderColor: COLORS[i % COLORS.length],
+    backgroundColor: COLORS[i % COLORS.length] + '22',
+    fill: true,
+    tension: 0.3,
+    pointRadius: 2,
+    borderWidth: 1.5
+  }));
+  chartTimeline.update();
+
+  // Tool bar chart
+  const byTool = data.by_tool || {};
+  const toolNames = Object.keys(byTool).sort((a, b) => byTool[b] - byTool[a]);
+  chartTools.data.labels = toolNames;
+  chartTools.data.datasets[0].data = toolNames.map(t => byTool[t]);
+  chartTools.data.datasets[0].backgroundColor = toolNames.map((_, i) => COLORS[i % COLORS.length]);
+  chartTools.update();
+
+  // Agent pie chart
+  const byAgent = data.by_caller || {};
+  const agentNames = Object.keys(byAgent).sort((a, b) => byAgent[b] - byAgent[a]);
+  chartAgents.data.labels = agentNames;
+  chartAgents.data.datasets[0].data = agentNames.map(a => byAgent[a]);
+  chartAgents.data.datasets[0].backgroundColor = agentNames.map((_, i) => COLORS[i % COLORS.length]);
+  chartAgents.update();
+}
+
+async function refresh() {
+  try {
+    const res = await fetch(API + '/api/analytics');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    updateCards(data);
+    updateCharts(data);
+    renderCallsTable(data.recent_calls);
+    renderErrorsTable(data.recent_errors);
+  } catch (err) {
+    console.error('Refresh failed:', err);
+  }
+}
+
+initCharts();
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

@@ -46,11 +46,20 @@ class WastelandConfig:
 
 
 @dataclass
+class GiteaConfig:
+    """Gitea (internal git platform) configuration."""
+    url: str = "http://localhost:3300"
+    token: str = ""
+    org: str = "Deepwork-AI"
+
+
+@dataclass
 class Config:
     """Root configuration for Deepwork Intelligence."""
     llm: LLMConfig = field(default_factory=LLMConfig)
     dolt: DoltConfig = field(default_factory=DoltConfig)
     wasteland: WastelandConfig = field(default_factory=WastelandConfig)
+    gitea: GiteaConfig = field(default_factory=GiteaConfig)
     gt_root: str = ""
     logs_dir: str = ""
     feedback_dir: str = ""
@@ -102,6 +111,11 @@ def _merge_config(cfg: Config, data: dict[str, Any]):
             if hasattr(cfg.wasteland, k):
                 setattr(cfg.wasteland, k, v)
 
+    if "gitea" in data:
+        for k, v in data["gitea"].items():
+            if hasattr(cfg.gitea, k):
+                setattr(cfg.gitea, k, v)
+
     if "gt_root" in data:
         cfg.gt_root = data["gt_root"]
     if "logs_dir" in data:
@@ -139,6 +153,14 @@ def _apply_env(cfg: Config):
         cfg.wasteland.database = v
     if v := os.environ.get("DI_WASTELAND_HANDLE"):
         cfg.wasteland.handle = v
+
+    # Gitea
+    if v := os.environ.get("DI_GITEA_URL"):
+        cfg.gitea.url = v
+    if v := os.environ.get("DI_GITEA_TOKEN"):
+        cfg.gitea.token = v
+    if v := os.environ.get("DI_GITEA_ORG"):
+        cfg.gitea.org = v
 
     # Paths
     if v := os.environ.get("GT_ROOT"):

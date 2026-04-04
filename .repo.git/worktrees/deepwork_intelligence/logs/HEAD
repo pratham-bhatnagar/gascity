@@ -1,9 +1,0 @@
-0000000000000000000000000000000000000000 f32c29e3782c8924e681172daf2929df2575c58c Pratham's Agent <prathamonchain@gmail.com> 1775281887 +0000
-f32c29e3782c8924e681172daf2929df2575c58c f32c29e3782c8924e681172daf2929df2575c58c Pratham's Agent <prathamonchain@gmail.com> 1775281887 +0000	reset: moving to HEAD
-f32c29e3782c8924e681172daf2929df2575c58c c96c3da0f325284b2ea9f0d05233c2d09cb6cee2 Pratham's Agent <prathamonchain@gmail.com> 1775282448 +0000	commit: feat: build deepwork intelligence MVP — ADK agents for Gas Town (di-ru7)
-c96c3da0f325284b2ea9f0d05233c2d09cb6cee2 2247ca9a0d9744aabf79635228a60c5ffd387dd2 Pratham's Agent <prathamonchain@gmail.com> 1775282457 +0000	commit: fix: auto-save uncommitted implementation work (di-ru7, gt-pvx safety net)
-2247ca9a0d9744aabf79635228a60c5ffd387dd2 589ffa2802d737fc065e4c20be631fb6dd1482f4 Pratham's Agent <prathamonchain@gmail.com> 1775282477 +0000	commit: chore: add CLAUDE.md rig identity (di-ru7)
-589ffa2802d737fc065e4c20be631fb6dd1482f4 7324cdf25f1adbd3d39f2da50e6ce8d5175c0a0a Pratham's Agent <prathamonchain@gmail.com> 1775282482 +0000	commit: chore: strip Gas Town overlay from CLAUDE.md (gt-p35)
-7324cdf25f1adbd3d39f2da50e6ce8d5175c0a0a adee129494590c08bbfda70a771f49063bea24a1 Pratham's Agent <prathamonchain@gmail.com> 1775283220 +0000	commit: feat: add wasteland flywheel agent — semantic bead-to-wasteland mapping (di-ru7)
-adee129494590c08bbfda70a771f49063bea24a1 caaca13efd4a54beb305a9c2e469b5649036ee70 Pratham's Agent <prathamonchain@gmail.com> 1775283230 +0000	commit: chore: add CLAUDE.md rig identity
-caaca13efd4a54beb305a9c2e469b5649036ee70 fd4a995d52d81a353eca4c89b71055151c570420 Pratham's Agent <prathamonchain@gmail.com> 1775283237 +0000	commit: chore: strip Gas Town overlay from CLAUDE.md (gt-p35)

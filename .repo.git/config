@@ -11,3 +11,9 @@
 [beads]
 	issue-prefix = di
 	role = contributor
+[branch "polecat/rust/di-6ff@mnk136dv"]
+	remote = origin
+	merge = refs/heads/main
+[branch "polecat/rust/di-jap@mnk13dq2"]
+	remote = origin
+	merge = refs/heads/main

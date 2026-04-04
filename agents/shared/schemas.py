@@ -141,3 +141,26 @@ class ChangelogEntry(BaseModel):
     title: str
     description: str
     impact: str
+
+
+# === GitHub/Gitea Agents ===
+
+class GitIssue(BaseModel):
+    """Output from the issue creation agent."""
+    title: str = Field(description="Clear, actionable issue title")
+    body: str = Field(description="Markdown body with context, acceptance criteria, etc.")
+    labels: list[str] = Field(description="Labels e.g. bug, feature, docs, P0, P1")
+    priority: str = Field(description="P0, P1, P2, or P3")
+
+
+class GitPR(BaseModel):
+    """Output from the PR creation agent."""
+    title: str = Field(description="Short PR title under 70 chars")
+    body: str = Field(description="Markdown PR body with summary, changes, test plan")
+
+
+class GitRelease(BaseModel):
+    """Output from the release notes agent (Gitea)."""
+    tag_name: str = Field(description="Semantic version tag e.g. v1.2.0")
+    name: str = Field(description="Human-readable release title")
+    body: str = Field(description="Markdown release notes with highlights and changes")
