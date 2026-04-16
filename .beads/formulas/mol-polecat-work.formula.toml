@@ -1,0 +1,414 @@
+description = """
+Polecat work lifecycle: load context, branch, implement, commit, push, exit.
+
+This molecule guides a polecat through a work assignment. Each step has clear
+entry/exit criteria. A polecat can crash after any step and resume from the
+last completed step.
+
+## Polecat Contract
+
+You are an event-driven worker. You:
+1. Receive work via your hook (formula checklist + issue)
+2. Work through formula steps in order
+3. Push your branch and submit MR
+4. Exit via `gt done`
+
+## Variables
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| issue | hook_bead | The issue ID you're assigned to work on |
+| base_branch | sling vars | Base branch to rebase on (default: main) |
+| setup_command | rig config | Setup/install command. Empty = skip. |
+| test_command | rig config | Test command. Empty = skip. |
+| lint_command | rig config | Lint command. Empty = skip. |
+| build_command | rig config | Build command. Empty = skip. |
+| typecheck_command | rig config | Type check command. Empty = skip. |
+
+## Failure Modes
+
+| Situation | Action |
+|-----------|--------|
+| Build fails | Fix it. Do not proceed if it won't compile. |
+| Blocked on external | Mail Witness for help, mark yourself stuck |
+| Context filling | Use gt handoff to cycle to fresh session |
+| Unsure what to do | Mail Witness, don't guess |"""
+formula = "mol-polecat-work"
+version = 11
+
+[[steps]]
+id = "load-context"
+title = "Load context and verify assignment"
+description = """
+Initialize your session and understand your assignment.
+
+**1. Prime your environment:**
+```bash
+gt prime
+bd prime
+```
+
+**2. Check your hook:**
+```bash
+gt hook
+```
+
+The hook_bead is your assigned issue. Read it carefully:
+```bash
+bd show {{issue}}
+```
+
+**3. Check inbox for additional context:**
+```bash
+gt mail inbox
+```
+
+**4. Check for prior merge failure context:**
+
+If the bead notes contain "MERGE REJECTION", a previous polecat's work was
+rejected. Read the failure details carefully:
+- **Failure-Type**: what broke (tests, build, lint, typecheck)
+- **Error**: the actual error output
+- **Branch**: the previous branch may still exist with the original work
+
+If a prior branch exists, check it out instead of creating a new one:
+```bash
+git fetch origin
+git branch -a | grep <branch-from-notes>
+# If it exists: git checkout <branch> && git rebase origin/{{base_branch}}
+```
+
+**5. Understand the requirements:**
+- What exactly needs to be done?
+- What files are likely involved?
+- What does "done" look like?
+- If this is a rework: what specifically failed and why?
+
+**6. If blocked or unclear, mail Witness:**
+```bash
+gt mail send <rig>/witness -s "HELP: Unclear requirements" -m "Issue: {{issue}}
+Question: <what you need clarified>"
+```
+
+**Exit criteria:** You understand the work and can begin implementation."""
+
+[[steps]]
+id = "branch-setup"
+title = "Set up working branch"
+needs = ["load-context"]
+description = """
+Ensure you're on a clean feature branch ready for work.
+
+**1. Check current branch state:**
+```bash
+git status
+git branch --show-current
+```
+
+**2. Check for a prior branch from a rejected MR:**
+```bash
+git fetch origin
+git branch -r | grep <prior-branch>
+# If found: git checkout -b <branch> origin/<branch> && git rebase origin/{{base_branch}}
+```
+
+**If no prior branch, create a fresh one:**
+```bash
+git fetch origin
+git checkout -b polecat/<name> origin/{{base_branch}}
+```
+
+**3. Ensure clean working state:**
+```bash
+git status
+```
+
+If dirty state from previous work:
+```bash
+git add -A && git commit -m "WIP: <description>"
+```
+
+**4. Sync with {{base_branch}}:**
+```bash
+git fetch origin
+git rebase origin/{{base_branch}}
+```
+
+**5. Run project setup (if configured):**
+```bash
+{{setup_command}}
+```
+Empty setup_command means skip.
+
+**Exit criteria:** On a clean feature branch, rebased on latest {{base_branch}}."""
+
+[[steps]]
+id = "implement"
+title = "Implement the solution"
+needs = ["branch-setup"]
+description = """
+Do the actual implementation work.
+
+**Working principles:**
+- Follow existing codebase conventions
+- Make atomic, focused commits
+- Keep changes scoped to the assigned issue
+- Don't gold-plate or scope-creep
+
+**Persist findings as you go (CRITICAL for session survival):**
+```bash
+bd update {{issue}} --notes "Findings so far: <what you discovered>"
+```
+
+**For report-only tasks** (audits, reviews, research): persist all findings
+to the bead via --notes or --design. Without this, your work is lost.
+
+**Commit frequently (for code tasks):**
+```bash
+git add <files>
+git commit -m "<type>: <description> ({{issue}})"
+```
+
+Commit types: feat, fix, refactor, test, docs, chore
+
+**Discovered work:**
+```bash
+bd create --title "Found: <description>" --type bug --priority 2
+```
+Do NOT fix unrelated issues in this branch.
+
+**If stuck (>15 min):**
+```bash
+gt mail send <rig>/witness -s "HELP: Stuck on implementation" -m "Issue: {{issue}}
+Trying to: <what you're attempting>
+Problem: <what's blocking you>
+Tried: <what you've attempted>"
+```
+
+**Exit criteria:** Implementation complete. Code committed or findings persisted."""
+
+[[steps]]
+id = "commit-changes"
+title = "Commit all changes"
+needs = ["implement"]
+description = """
+Ensure ALL implementation work is committed.
+
+**CRITICAL: NEVER use `git checkout -- .` or `git restore .` to discard work.**
+
+**1. Check for uncommitted changes:**
+```bash
+git status
+```
+
+**2. Commit any remaining changes:**
+```bash
+git add -A && git commit -m "<type>: <descriptive message> ({{issue}})"
+```
+
+**3. VERIFY commits exist (HARD GATE):**
+```bash
+git log origin/{{base_branch}}..HEAD --oneline
+```
+MUST show at least 1 commit. If empty, go back to implement.
+
+If the task genuinely requires no code changes:
+```bash
+gt done --status DEFERRED
+```
+
+**4. VERIFY clean working tree:**
+```bash
+git status
+```
+Must show "nothing to commit, working tree clean".
+
+**Report-only tasks (no commits):**
+Verify findings persisted to bead, then `gt done --cleanup-status clean`.
+
+**Exit criteria:** Working tree clean, at least 1 commit ahead of origin/{{base_branch}}."""
+
+[[steps]]
+id = "save-session-learnings"
+title = "Save session learnings to DI memory (MANDATORY)"
+needs = ["commit-changes"]
+description = """
+Persist what you learned during this session using DI MCP memory tools.
+This is MANDATORY — every polecat session must save learnings before exit.
+
+**Why this matters:** Session context is lost when you exit. Memory beads
+persist across sessions, enabling the entire agent fleet to learn from
+each polecat's experience. Patterns, anti-patterns, decisions, and
+incidents become shared knowledge.
+
+**1. Reflect on what you learned during this session:**
+
+Consider these categories:
+- **Patterns**: Reusable approaches that worked well (kind: pattern)
+- **Anti-patterns**: Approaches that failed or caused problems (kind: anti-pattern)
+- **Decisions**: Non-obvious choices and their rationale (kind: decision)
+- **Incidents**: Unexpected issues encountered and how resolved (kind: incident)
+- **Skills**: New capabilities or techniques demonstrated (kind: skill)
+- **Context**: Project-specific knowledge for future sessions (kind: context)
+
+**2. Save at least ONE memory using DI MCP `memory_remember`:**
+
+Call the MCP tool `memory_remember` for each significant learning:
+```
+memory_remember(
+    content="<concise description of what you learned>",
+    kind="<pattern|anti-pattern|decision|incident|skill|context>",
+    scope="rig",
+    confidence=0.8,
+    source_bead="{{issue}}"
+)
+```
+
+**Guidelines for good memories:**
+- Be specific and actionable — "Go tests in this repo need -count=1 flag"
+  not "tests are tricky"
+- Include the WHY — "because parallel test execution causes DB conflicts"
+- Set confidence based on how certain you are (0.5 = uncertain, 0.9 = very sure)
+- Use scope="rig" for rig-specific learnings, scope="town" for cross-rig insights
+- Link to source_bead for provenance
+
+**3. Minimum requirements:**
+- At least 1 memory MUST be saved per session
+- If the session was routine with no novel learnings, save a context memory
+  about the current state of the code/feature you worked on
+- If DI MCP is unavailable (server down), document learnings in bead notes
+  as fallback:
+  ```bash
+  bd update {{issue}} --notes "SESSION LEARNINGS: <what you learned>"
+  ```
+
+**Exit criteria:** At least 1 memory saved via memory_remember (or fallback to bead notes)."""
+
+[[steps]]
+id = "session-report"
+title = "Generate session report via DI (MANDATORY)"
+needs = ["save-session-learnings"]
+description = """
+Generate a structured session report before exiting. This is MANDATORY —
+every polecat session must produce a report for the capability ledger.
+
+**Why this matters:** Session reports feed the wasteland scoring system,
+enable the witness to track polecat effectiveness, and build the
+capability ledger that proves autonomous execution works at scale.
+
+**1. Compile your session report:**
+
+Gather the following data points:
+- **Issue**: {{issue}}
+- **What was done**: Brief summary of implementation (1-2 sentences)
+- **Commits**: Number of commits made
+- **Files changed**: Key files modified
+- **Learnings saved**: Memory IDs from the previous step
+- **Blockers encountered**: Any issues that slowed you down
+- **Quality assessment**: Your honest self-grade (A-F)
+
+**2. Submit the report using DI MCP `wasteland_stamp`:**
+
+Call the MCP tool `wasteland_stamp` to score your own completion:
+```
+wasteland_stamp(
+    completion_id="{{issue}}"
+)
+```
+
+This generates Q/R/C scores (Quality, Reliability, Creativity) for your work.
+
+**3. Persist the report to the bead:**
+
+Update the bead with your session summary so it survives after you exit:
+```bash
+bd update {{issue}} --notes "SESSION REPORT:
+Issue: {{issue}}
+Summary: <what was implemented>
+Commits: <count>
+Files: <key files changed>
+Memories saved: <memory IDs from previous step>
+Self-grade: <A-F>
+Blockers: <any blockers encountered, or none>"
+```
+
+**4. Fallback if DI MCP is unavailable:**
+
+If wasteland_stamp fails or DI MCP is down, the bead notes report is
+sufficient. Do NOT block on DI MCP availability — the bead notes are
+the minimum viable report.
+
+**Exit criteria:** Session report persisted to bead notes. wasteland_stamp called if DI available."""
+
+[[steps]]
+id = "push-and-submit"
+title = "Push branch and submit MR"
+needs = ["session-report"]
+description = """
+Push your branch and submit to the merge queue.
+
+**1. Rebase onto latest target:**
+```bash
+git fetch origin {{base_branch}}
+git rebase origin/{{base_branch}}
+```
+
+If rebase conflicts, resolve carefully.
+
+**2. Push:**
+```bash
+git push origin HEAD
+```
+
+**3. Submit to merge queue:**
+```bash
+gt mq submit {{issue}}
+```
+
+Track the MR bead ID from the submit output.
+
+**Exit criteria:** Branch pushed, MR submitted to merge queue."""
+
+[[steps]]
+id = "exit"
+title = "Self-clean and exit"
+needs = ["push-and-submit"]
+description = """
+Clean up and exit.
+
+```bash
+gt done
+```
+
+You are GONE after this. The refinery handles merging.
+
+**Exit criteria:** Sandbox nuked, session exited."""
+
+[vars]
+[vars.issue]
+description = "The issue ID assigned to this polecat"
+required = true
+
+[vars.base_branch]
+description = "The base branch to rebase on and compare against"
+default = "main"
+
+[vars.setup_command]
+description = "Setup/install command (e.g., pnpm install). Empty = skip."
+default = ""
+
+[vars.typecheck_command]
+description = "Type check command (e.g., tsc --noEmit). Empty = skip."
+default = ""
+
+[vars.test_command]
+description = "Command to run tests"
+default = ""
+
+[vars.lint_command]
+description = "Command to run linting. Empty = skip."
+default = ""
+
+[vars.build_command]
+description = "Command to run build. Empty = skip."
+default = ""
